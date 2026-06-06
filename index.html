@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Burj Khalifa Climber – Year 4 & 5 Maths Project</title>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:#030810;display:flex;flex-direction:column;align-items:center;
      min-height:100vh;font-family:'Nunito',Arial,sans-serif;overflow-x:hidden;}
-
-/* ── SCHOOL BANNER ── */
 #schoolBanner{
   width:100%;max-width:480px;
   background:linear-gradient(135deg,#1a237e,#0d1b6e);
@@ -22,18 +22,12 @@ body{background:#030810;display:flex;flex-direction:column;align-items:center;
 .banner-left .subtitle{color:#8899dd;font-size:11px;font-weight:600;}
 .badge{background:#FFD700;color:#000;font-size:11px;font-weight:800;
        border-radius:20px;padding:3px 11px;white-space:nowrap;}
-
-/* ── PROGRESS BAR ── */
 #progressWrap{width:480px;position:relative;}
 #progressBar{width:100%;height:8px;background:#111;border:1px solid #FFD70055;border-top:none;overflow:hidden;}
 #progressFill{height:100%;background:linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c);width:0%;transition:width .5s;}
 #progressLabel{position:absolute;top:-1px;right:5px;color:#FFD70088;font-size:9px;pointer-events:none;}
-
-/* ── GAME CONTAINER ── */
 #gameContainer{position:relative;}
 canvas{display:block;border:2px solid #FFD70066;border-top:none;}
-
-/* ── ZONE BANNER (in-game overlay) ── */
 #zoneBanner{
   position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
   text-align:center;pointer-events:none;z-index:8;opacity:0;
@@ -43,8 +37,6 @@ canvas{display:block;border:2px solid #FFD70066;border-top:none;}
 #zoneBanner .zname{font-family:'Fredoka One',sans-serif;font-size:26px;color:#FFD700;
   text-shadow:0 0 30px #FFD700,0 0 60px #FFD70066;}
 #zoneBanner .zdesc{color:#aabcff;font-size:13px;margin-top:4px;}
-
-/* ── ABILITY POPUP ── */
 #abilityPopup{
   position:absolute;top:140px;left:50%;transform:translateX(-50%);
   background:rgba(0,8,30,0.92);border:2px solid #00FFFF;border-radius:12px;
@@ -54,8 +46,6 @@ canvas{display:block;border:2px solid #FFD70066;border-top:none;}
 #abilityPopup.show{opacity:1;}
 #abilityPopup .aname{font-family:'Fredoka One',sans-serif;font-size:20px;color:#00FFFF;}
 #abilityPopup .adesc{color:#88eeff;font-size:12px;margin-top:3px;}
-
-/* ── FACT POPUP ── */
 #factPopup{
   position:absolute;bottom:46px;left:50%;transform:translateX(-50%);
   background:rgba(8,18,50,0.9);border:1px solid #4466ff66;
@@ -64,8 +54,6 @@ canvas{display:block;border:2px solid #FFD70066;border-top:none;}
   pointer-events:none;z-index:5;opacity:0;transition:opacity .4s;
 }
 #factPopup.show{opacity:1;}
-
-/* ── MATH OVERLAY – exercise book ── */
 #mathOverlay{display:none;position:absolute;top:0;left:0;width:100%;height:100%;
   background:rgba(2,6,20,0.9);pointer-events:all;
   flex-direction:column;align-items:center;justify-content:center;z-index:10;}
@@ -96,8 +84,6 @@ canvas{display:block;border:2px solid #FFD70066;border-top:none;}
 .math-btn.wrong{background:#c62828!important;color:#fff;border-color:#c62828;}
 #mathFeedback{padding:8px 12px 10px 50px;font-size:13px;font-weight:700;
   min-height:28px;border-top:1px dashed #aaa;background:#fffff0;}
-
-/* ── SHOP ── */
 #shopOverlay{display:none;position:absolute;top:0;left:0;width:100%;height:100%;
   background:rgba(2,6,20,0.95);pointer-events:all;
   flex-direction:column;align-items:center;justify-content:center;z-index:10;}
@@ -119,8 +105,6 @@ canvas{display:block;border:2px solid #FFD70066;border-top:none;}
   border-radius:7px;padding:9px;font-size:14px;font-weight:700;cursor:pointer;
   font-family:'Nunito',sans-serif;}
 #closeShop:hover{background:#e53935;}
-
-/* ── TITLE SCREEN ── */
 #titleScreen{display:flex;position:absolute;top:0;left:0;width:100%;height:100%;
   pointer-events:all;z-index:20;
   flex-direction:column;align-items:center;justify-content:center;}
@@ -139,48 +123,83 @@ canvas{display:block;border:2px solid #FFD70066;border-top:none;}
   text-align:center;max-width:340px;}
 .title-facts strong{color:#FFD700;}
 .controls-hint{margin-top:12px;color:#556688;font-size:10px;text-align:center;}
+#touchControls{
+  width:100%;max-width:480px;
+  background:#02060f;border-top:1.5px solid #FFD70033;
+  padding:8px 10px 12px;
+  display:flex;align-items:center;gap:8px;
+  user-select:none;-webkit-user-select:none;
+  touch-action:none;
+}
+.tc-left{display:flex;gap:6px;flex-shrink:0;}
+.tc-right{display:flex;gap:6px;margin-left:auto;flex-shrink:0;}
+.tc-mid{flex:1;display:flex;justify-content:center;}
+.tc-btn{
+  background:rgba(255,255,255,0.06);
+  border:1.5px solid rgba(255,215,0,0.28);
+  border-radius:12px;color:#FFD700;
+  font-family:'Fredoka One',sans-serif;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  touch-action:none;-webkit-tap-highlight-color:transparent;
+  transition:background 0.08s,transform 0.07s,border-color 0.08s;
+  outline:none;
+}
+.tc-btn:active,.tc-btn.tc-pressed{
+  background:rgba(255,215,0,0.2);
+  border-color:rgba(255,215,0,0.7);
+  transform:scale(0.91);
+}
+#tcLeft,#tcRight{width:52px;height:50px;font-size:22px;}
+#tcJump{width:64px;height:50px;font-size:12px;color:#00FFFF;border-color:rgba(0,255,255,0.3);}
+#tcJump:active,#tcJump.tc-pressed{background:rgba(0,255,255,0.18);border-color:rgba(0,255,255,0.8);}
+#tcAttack{width:54px;height:50px;font-size:20px;color:#ff8844;border-color:rgba(255,136,68,0.3);}
+#tcAttack:active,#tcAttack.tc-pressed{background:rgba(255,136,68,0.18);border-color:rgba(255,136,68,0.8);}
+#tcDash{width:54px;height:50px;font-size:12px;color:#88ff88;border-color:rgba(136,255,136,0.28);}
+#tcDash:active,#tcDash.tc-pressed{background:rgba(136,255,136,0.18);border-color:rgba(136,255,136,0.8);}
+#tcPause{width:38px;height:50px;font-size:17px;color:#aabcff;border-color:rgba(170,188,255,0.25);}
+#soundBtn{
+  position:absolute;top:7px;right:12px;
+  background:rgba(255,255,255,0.06);border:1px solid rgba(255,215,0,0.2);
+  border-radius:8px;color:#FFD700;font-size:14px;
+  padding:3px 8px;cursor:pointer;font-family:'Nunito',sans-serif;
+  z-index:30;
+}
+@media(min-width:600px){
+  #touchControls{display:none;}
+}
+@media(max-width:599px){
+  .controls-hint{display:none;}
+}
+canvas{touch-action:none;}
 </style>
 </head>
 <body>
-
-<div id="schoolBanner">
+<div id="schoolBanner" style="position:relative;">
   <div class="banner-left">
     <div class="title">🏙️ Burj Khalifa Climber</div>
     <div class="subtitle">Interactive Maths Learning Adventure · UAE Geography</div>
   </div>
   <div class="badge">📚 Year 4 &amp; 5</div>
+  <button id="soundBtn" title="Toggle sound (Q)">🔊</button>
 </div>
-
 <div id="progressWrap">
   <div id="progressBar"><div id="progressFill"></div></div>
   <span id="progressLabel">0% climbed</span>
 </div>
-
 <div id="gameContainer">
   <canvas id="gameCanvas" width="480" height="600"></canvas>
-
   <audio id="bgMusic" loop preload="auto">
     <source src="https://www.soundjay.com/misc/sounds/space-ambience-01.mp3" type="audio/mpeg">
   </audio>
-
-  <!-- Zone transition banner -->
   <div id="zoneBanner">
     <div class="zname" id="zoneNameEl"></div>
     <div class="zdesc" id="zoneDescEl"></div>
   </div>
-
-  <!-- Ability unlock popup -->
   <div id="abilityPopup">
     <div class="aname" id="abilityNameEl"></div>
     <div class="adesc" id="abilityDescEl"></div>
   </div>
-
-  <!-- Fact popup -->
-  <div id="factPopup" id="factPopup"></div>
-
-  <!-- HUD is drawn on canvas; only overlays in HTML -->
-
-  <!-- MATH OVERLAY -->
+  <div id="factPopup"></div>
   <div id="mathOverlay">
     <div id="mathBox">
       <div id="mathHeader">
@@ -195,8 +214,6 @@ canvas{display:block;border:2px solid #FFD70066;border-top:none;}
       <div id="mathFeedback"></div>
     </div>
   </div>
-
-  <!-- SHOP -->
   <div id="shopOverlay">
     <div id="shopBox">
       <h2>🛍️ Character Shop</h2>
@@ -205,8 +222,6 @@ canvas{display:block;border:2px solid #FFD70066;border-top:none;}
       <button id="closeShop">✕ Close Shop</button>
     </div>
   </div>
-
-  <!-- TITLE -->
   <div id="titleScreen">
     <div class="title-logo">🏙️ Burj Khalifa<br>Climber!</div>
     <div class="title-sub">Dubai Maths Adventure</div>
@@ -220,12 +235,25 @@ canvas{display:block;border:2px solid #FFD70066;border-top:none;}
       By <strong>Flynn Hurley</strong> · Tamborine Mountain State School · Class 4J
     </div>
     <div class="controls-hint">
-      ←→ Move &nbsp;·&nbsp; ↑/Z Jump (×2 with ability) &nbsp;·&nbsp; X Slide/Dash<br>
-      Space Attack &nbsp;·&nbsp; ↑+Wall Wall-Jump &nbsp;·&nbsp; S Shop &nbsp;·&nbsp; M Map
+      ←→ Move &nbsp;·&nbsp; ↑/Z Jump (×2 with ability) &nbsp;·&nbsp; X Dash<br>
+      Space/F Attack &nbsp;·&nbsp; ↑+Wall = Wall-Jump &nbsp;·&nbsp; S Shop &nbsp;·&nbsp; M Map &nbsp;·&nbsp; P Pause
     </div>
   </div>
 </div>
-
+<div id="touchControls">
+  <div class="tc-left">
+    <button class="tc-btn" id="tcLeft" aria-label="Move left">◀</button>
+    <button class="tc-btn" id="tcRight" aria-label="Move right">▶</button>
+  </div>
+  <div class="tc-mid">
+    <button class="tc-btn" id="tcJump" aria-label="Jump">JUMP</button>
+  </div>
+  <div class="tc-right">
+    <button class="tc-btn" id="tcAttack" aria-label="Attack">⚔</button>
+    <button class="tc-btn" id="tcDash" aria-label="Dash">DASH</button>
+    <button class="tc-btn" id="tcPause" aria-label="Pause">⏸</button>
+  </div>
+</div>
 <script src="game.js"></script>
 </body>
 </html>
