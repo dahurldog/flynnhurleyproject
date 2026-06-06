@@ -164,10 +164,13 @@ function generateLevel(lvl){
   while(cx < WORLD_W - 300){
     const prevRight = cx + pw;
     pw = 80 + Math.random()*110;
-    const hgap = 20 + Math.random()*(MAX_H_GAP - 20); // gap between platforms
+    const isEarly = cx < 520; // zone 0 — keep gentle so first area is learnable
+    const maxH = isEarly ? 55 : MAX_H_GAP;
+    const hgap = 20 + Math.random()*(maxH - 20);
     cx = prevRight + hgap;
-    // Mostly level, allow small ups/downs
-    const dy = -10 + (Math.random()-0.5)*MAX_V_GAP;
+    const dy = isEarly
+      ? -4 + (Math.random()-0.5)*18  // gentle rise: max ~13px up per step
+      : -10 + (Math.random()-0.5)*MAX_V_GAP;
     cy = Math.max(GOAL_Y+40, Math.min(GROUND_Y-20, cy + dy));
     path.push({x:cx, y:cy, w:pw});
   }
@@ -192,7 +195,7 @@ function generateLevel(lvl){
   });
 
   // Ground slab (left side starting area)
-  platforms.unshift({x:0, y:GROUND_Y, w:180, h:20, type:'ground',
+  platforms.unshift({x:0, y:GROUND_Y, w:500, h:20, type:'ground',
     collapseTimer:0,collapseMax:55,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
 
   // Goal platform at end
@@ -216,7 +219,7 @@ function generateLevel(lvl){
 
   // ── MOVING PLATFORMS (every 4th path platform in zone 1+)
   let movIdx=0;
-  platforms.filter(p=>p.type==='platform'&&p.zone>=1).forEach(p=>{
+  platforms.filter(p=>p.type==='platform'&&p.zone>=2).forEach(p=>{
     movIdx++;
     if(movIdx%4===0){
       p.moving=true; p.moveDir=1; p.movVx=0;
@@ -253,7 +256,7 @@ function generateLevel(lvl){
     ['captain','phantom'],       // zone 4
     ['captain','titan','phantom'],// zone 5
   ];
-  platforms.filter(p=>p.type==='platform'&&p.floor>1).forEach(p=>{
+  platforms.filter(p=>p.type==='platform'&&p.floor>3).forEach(p=>{
     if(Math.random()<0.50+lvl*0.05){
       const pool=ENEMY_POOL[Math.min(p.zone,5)];
       const etype=pool[Math.floor(Math.random()*pool.length)];
@@ -754,150 +757,317 @@ function draw(){
   if(state==='gameover') drawGameOver();
 }
 
-// ── INTERIOR BACKGROUND ───────────────────────────────────────
-// Windows are in WORLD coords, tiled across width.
-// Shows the inside of the Burj Khalifa looking toward the exterior glass wall.
-const WIN_PATTERN_W = 160; // world px per window unit
-const WIN_W = 100;          // glass panel width
-const WIN_TOP   = 80;       // world Y, top of windows
-const WIN_BOT   = GROUND_Y-20; // world Y, bottom
-
-// Silhouette definitions (world-relative offsets within a window)
-const SILHOUETTES = [
-  // standing at left
-  (x,y)=>{ ctx.beginPath(); ctx.arc(x+18,y-58,8,0,Math.PI*2); ctx.fill(); ctx.fillRect(x+12,y-50,12,28); ctx.fillRect(x+10,y-22,5,22); ctx.fillRect(x+17,y-22,5,22); },
-  // seated at desk
-  (x,y)=>{ ctx.beginPath(); ctx.arc(x+28,y-52,7,0,Math.PI*2); ctx.fill(); ctx.fillRect(x+22,y-45,10,18); ctx.fillRect(x+8,y-30,36,5); ctx.fillRect(x+14,y-25,5,14); },
-  // standing with arm raised (presenting)
-  (x,y)=>{ ctx.beginPath(); ctx.arc(x+50,y-60,8,0,Math.PI*2); ctx.fill(); ctx.fillRect(x+44,y-52,12,28); ctx.fillRect(x+56,y-52,10,3); ctx.fillRect(x+66,y-50,3,18); ctx.fillRect(x+42,y-24,5,24); ctx.fillRect(x+49,y-24,5,24); },
-  // two people talking
-  (x,y)=>{ ctx.beginPath(); ctx.arc(x+15,y-55,7,0,Math.PI*2); ctx.fill(); ctx.fillRect(x+9,y-48,10,26); ctx.fillRect(x+7,y-22,5,22); ctx.fillRect(x+14,y-22,5,22); ctx.beginPath(); ctx.arc(x+38,y-52,7,0,Math.PI*2); ctx.fill(); ctx.fillRect(x+32,y-45,10,24); ctx.fillRect(x+30,y-21,5,21); ctx.fillRect(x+37,y-21,5,21); },
-  // empty
-  ()=>{},
-  // person looking out window
-  (x,y)=>{ ctx.beginPath(); ctx.arc(x+55,y-56,7,0,Math.PI*2); ctx.fill(); ctx.fillRect(x+49,y-49,10,26); ctx.fillRect(x+47,y-23,5,23); ctx.fillRect(x+54,y-23,5,23); },
+// ── ZONE PALETTE ─────────────────────────────────────────────
+// Each zone: interior wall, column, floor colours + window exterior palette
+const Z_PAL=[
+  // Zone 0: Grand Lobby — cream marble, warm gold
+  {wall:'#141210',col:'#1e1a14',floor:'#1c1810',fLine:'rgba(180,150,55,0.28)',
+   sky0:'#070c1c',sky1:'#0d1430',ext:'#c8cdd6',cLine:'rgba(200,215,235,0.50)',
+   ledge:'#9aa2b2',accent:'#c8a848',light:'rgba(255,195,90,0.22)'},
+  // Zone 1: Armani Hotel — dark charcoal, deep navy
+  {wall:'#0e1018',col:'#161c26',floor:'#12182a',fLine:'rgba(88,108,172,0.24)',
+   sky0:'#040810',sky1:'#07101e',ext:'#b8beca',cLine:'rgba(175,192,218,0.42)',
+   ledge:'#8890a6',accent:'#7890bc',light:'rgba(95,140,255,0.18)'},
+  // Zone 2: Residential — warm amber
+  {wall:'#161210',col:'#201810',floor:'#1c1408',fLine:'rgba(155,115,52,0.28)',
+   sky0:'#050808',sky1:'#080e16',ext:'#c0cad2',cLine:'rgba(188,202,222,0.44)',
+   ledge:'#909caa',accent:'#cc9e58',light:'rgba(218,158,75,0.20)'},
+  // Zone 3: Corporate — steel blue glass
+  {wall:'#0c1016',col:'#121c2a',floor:'#101820',fLine:'rgba(72,125,198,0.30)',
+   sky0:'#030810',sky1:'#060e1a',ext:'#b2bcc8',cLine:'rgba(162,185,216,0.48)',
+   ledge:'#7e90a8',accent:'#5a8ec8',light:'rgba(72,155,255,0.20)'},
+  // Zone 4: At The Top — silver white, pale sky
+  {wall:'#12161e',col:'#1a2030',floor:'#161c2a',fLine:'rgba(155,178,218,0.32)',
+   sky0:'#070b14',sky1:'#0c1020',ext:'#ccd6e2',cLine:'rgba(218,230,248,0.54)',
+   ledge:'#a6b2c6',accent:'#b6cce4',light:'rgba(175,208,255,0.25)'},
+  // Zone 5: Spire — raw steel, dark sky
+  {wall:'#0e1214',col:'#161c22',floor:'#12181c',fLine:'rgba(132,155,178,0.28)',
+   sky0:'#040a0e',sky1:'#090e12',ext:'#c0cad2',cLine:'rgba(195,210,228,0.48)',
+   ledge:'#8c96a8',accent:'#9cb0c0',light:'rgba(155,188,218,0.20)'},
 ];
 
-function drawInterior(){
-  // Sky base
-  const zone=getZone(PL.x);
-  ctx.fillStyle=zone.sky||'#050810'; ctx.fillRect(0,0,W,H);
+// World-space window layout
+const WIN_PW  = 160; // world px per repeat unit
+const WIN_GW  = 102; // glass panel width (world px)
+const COL_W   = WIN_PW - WIN_GW; // 58px structural column
+const WIN_TOP_W = 90;
+const WIN_BOT_W = GROUND_Y - 16;
 
-  // -- Draw window panels tiled across visible world
-  const firstWin=Math.floor(cameraX/WIN_PATTERN_W)-1;
-  const lastWin=Math.ceil((cameraX+W)/WIN_PATTERN_W)+1;
+function drawInterior(){
+  const zid = Math.max(0, Math.min(5, lastZoneId>=0 ? lastZoneId : 0));
+  const pal = Z_PAL[zid];
+  const t = Date.now()/1000;
+
+  // Dark interior base
+  ctx.fillStyle = pal.wall;
+  ctx.fillRect(0, 0, W, H);
+
+  const firstWin = Math.floor(cameraX/WIN_PW) - 1;
+  const lastWin  = Math.ceil((cameraX+W)/WIN_PW) + 1;
 
   for(let wi=firstWin; wi<=lastWin; wi++){
-    const worldX = wi*WIN_PATTERN_W;
-    const pillarSX = sx(worldX);
-    const pillarW  = WIN_PATTERN_W - WIN_W;  // 60px pillar
-    const winSX    = sx(worldX+pillarW);
-    const winSY    = sw(WIN_TOP);
-    const winEY    = sw(WIN_BOT);
-    const winH     = winEY-winSY;
-    if(winEY<0||winSY>H) continue;
+    const worldX = wi * WIN_PW;
+    const colSX  = sx(worldX);          // structural column screen x
+    const winSX  = colSX + COL_W;       // glass panel left edge
+    const winSY  = sw(WIN_TOP_W);
+    const winEY  = sw(WIN_BOT_W);
+    const winH   = winEY - winSY;
+    if(winEY < 0 || winSY > H) continue;
+    if(winSX + WIN_GW < 0 || colSX > W) continue;
 
-    // Pillar / wall section
-    ctx.fillStyle='#141820';
-    ctx.fillRect(pillarSX,0,pillarW,H);
+    // ── STRUCTURAL Y-BUTTRESS COLUMN
+    // Burj Khalifa's Y-shaped cross-section means wide diagonal buttresses
+    const colG = ctx.createLinearGradient(colSX, 0, colSX+COL_W, 0);
+    colG.addColorStop(0,    pal.wall);
+    colG.addColorStop(0.08, pal.col);
+    colG.addColorStop(0.35, '#1c2030');
+    colG.addColorStop(0.65, '#1c2030');
+    colG.addColorStop(0.92, pal.col);
+    colG.addColorStop(1,    pal.wall);
+    ctx.fillStyle = colG;
+    ctx.fillRect(colSX, 0, COL_W, H);
 
-    // Concrete trim lines on pillar
-    ctx.strokeStyle='rgba(60,80,120,0.4)'; ctx.lineWidth=1;
-    [0.25,0.5,0.75].forEach(f=>{ ctx.beginPath(); ctx.moveTo(pillarSX,f*H); ctx.lineTo(pillarSX+pillarW,f*H); ctx.stroke(); });
+    // Column edge highlights (chamfered concrete look)
+    ctx.fillStyle = 'rgba(255,255,255,0.035)';
+    ctx.fillRect(colSX+COL_W-4, 0, 4, H);
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(colSX, 0, 4, H);
 
-    // Window glass — city view outside
-    const skyG=ctx.createLinearGradient(winSX,winSY,winSX,winEY);
-    skyG.addColorStop(0,'#060c1e'); skyG.addColorStop(0.5,'#081428'); skyG.addColorStop(1,'#0a1c38');
-    ctx.fillStyle=skyG; ctx.fillRect(winSX,winSY,WIN_W,Math.max(0,winH));
+    // Horizontal banding on column (construction pour lines)
+    ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+    ctx.lineWidth = 1;
+    for(let hy = (sw(WIN_TOP_W) - cameraY*0.02) % 44; hy < H; hy += 44){
+      ctx.beginPath(); ctx.moveTo(colSX+4, hy); ctx.lineTo(colSX+COL_W-4, hy); ctx.stroke();
+    }
 
-    // City skyline silhouette at base of window
-    const numBuildings=6;
-    const bw=WIN_W/numBuildings;
-    const silH=winEY-winSY;
-    for(let bi=0;bi<numBuildings;bi++){
-      const bh=silH*(0.15+((wi*7+bi*13)%8)*0.05);
-      const bx=winSX+bi*bw;
-      const by=winEY-bh;
-      ctx.fillStyle='#050d1a'; ctx.fillRect(bx,by,bw-1,bh);
-      // Little lit windows on buildings
-      for(let row=2;row<Math.floor(bh/9);row++){
-        for(let col=0;col<2;col++){
-          const litSeed=(wi*100+bi*10+row*3+col)%7;
-          if(litSeed<4){
-            ctx.fillStyle=litSeed<2?'rgba(255,220,100,0.5)':'rgba(180,210,255,0.3)';
-            ctx.fillRect(bx+2+col*7,by+3+row*9,5,5);
-          }
+    // Gold accent strip at top of column (lobby gold trim)
+    if(zid===0){
+      ctx.fillStyle='rgba(200,168,72,0.22)';
+      ctx.fillRect(colSX+6, sw(WIN_TOP_W)-4, COL_W-12, 3);
+    }
+
+    // ── WINDOW GLASS PANEL
+    const cSY = Math.max(0, winSY);
+    const cEY = Math.min(H, winEY);
+    const cH  = cEY - cSY;
+    if(cH <= 0) continue;
+
+    // Night sky background
+    const skyG = ctx.createLinearGradient(winSX, cSY, winSX, cEY);
+    skyG.addColorStop(0, pal.sky0);
+    skyG.addColorStop(1, pal.sky1);
+    ctx.fillStyle = skyG;
+    ctx.fillRect(winSX, cSY, WIN_GW, cH);
+
+    // Stars in upper portion
+    for(let s=0; s<10; s++){
+      const stX = winSX + (wi*41+s*17) % WIN_GW;
+      const stY = cSY  + (wi*29+s*37) % Math.max(1, cH*0.55);
+      ctx.fillStyle = `rgba(255,255,255,${0.15+((wi*7+s*13)%5)*0.06})`;
+      ctx.fillRect(stX, stY, 1, 1);
+    }
+
+    // ── BURJ KHALIFA ADJACENT WING (Y-shape cross-section)
+    // The adjacent wing appears at angle through the window —
+    // silver aluminium cladding, setback ledges, tapered profile
+    ctx.save();
+    // Clip to window area
+    ctx.beginPath();
+    ctx.rect(winSX, cSY, WIN_GW, cH);
+    ctx.clip();
+
+    // Wing occupies right ~58% of window, tapers more at higher floors
+    const wingOffX = winSX + WIN_GW * 0.40;
+    const wingW    = WIN_GW * 0.58;
+    const taper    = zid * 3; // narrower looking as we climb
+    const wingTopX = wingOffX + taper;
+    const wingTopW = Math.max(8, wingW - taper*1.8);
+
+    // Wing face gradient (silver aluminium)
+    const wingG = ctx.createLinearGradient(wingOffX, 0, wingOffX+wingW, 0);
+    wingG.addColorStop(0,   '#a8b0bc');
+    wingG.addColorStop(0.3, pal.ext);
+    wingG.addColorStop(0.65,'#e4eaf2');
+    wingG.addColorStop(0.85, pal.ext);
+    wingG.addColorStop(1,   '#909aa8');
+    ctx.fillStyle = wingG;
+    ctx.beginPath();
+    ctx.moveTo(wingOffX,        cEY+4);
+    ctx.lineTo(wingOffX+wingW,  cEY+4);
+    ctx.lineTo(wingTopX+wingTopW, cSY-2);
+    ctx.lineTo(wingTopX,          cSY-2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Horizontal cladding panel lines
+    const panH = 11; // screen px per aluminium panel
+    ctx.strokeStyle = pal.cLine;
+    ctx.lineWidth = 0.6;
+    for(let py=cSY; py<cEY; py+=panH){
+      ctx.beginPath(); ctx.moveTo(wingOffX-2, py); ctx.lineTo(wingOffX+wingW+2, py); ctx.stroke();
+    }
+
+    // Vertical panel divisions
+    ctx.strokeStyle = 'rgba(150,162,180,0.22)';
+    ctx.lineWidth = 0.5;
+    for(let ci=1; ci<=5; ci++){
+      const px = wingOffX + (wingW/6)*ci;
+      ctx.beginPath(); ctx.moveTo(px, cSY); ctx.lineTo(px, cEY); ctx.stroke();
+    }
+
+    // Diagonal triangular motif (signature Burj cladding pattern)
+    ctx.strokeStyle = 'rgba(130,145,165,0.12)';
+    ctx.lineWidth = 0.5;
+    for(let py=cSY; py<cEY; py+=panH*2){
+      for(let ci=0; ci<6; ci++){
+        const x1 = wingOffX + (wingW/6)*ci;
+        const x2 = wingOffX + (wingW/6)*(ci+1);
+        ctx.beginPath(); ctx.moveTo(x1, py); ctx.lineTo(x2, py+panH*2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x2, py); ctx.lineTo(x1, py+panH*2); ctx.stroke();
+      }
+    }
+
+    // ── SETBACK LEDGES (Burj's 27 setbacks — most distinctive feature)
+    const ledgeSpacing = panH * 7;
+    for(let py=cEY - panH*2; py>cSY; py-=ledgeSpacing){
+      ctx.fillStyle = pal.ledge;
+      ctx.fillRect(wingOffX-10, py-2, wingW+18, 4);
+      // Ledge top highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(wingOffX-10, py-2, wingW+18, 1);
+      // Shadow under ledge
+      const lShadow = ctx.createLinearGradient(0, py+2, 0, py+10);
+      lShadow.addColorStop(0, 'rgba(0,0,0,0.30)');
+      lShadow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = lShadow;
+      ctx.fillRect(wingOffX-10, py+2, wingW+18, 8);
+    }
+
+    // Glass reflection on wing (makes it look like glass curtain wall)
+    const reflG = ctx.createLinearGradient(wingOffX, 0, wingOffX+wingW, 0);
+    reflG.addColorStop(0,   'rgba(200,220,255,0.00)');
+    reflG.addColorStop(0.25,'rgba(220,235,255,0.10)');
+    reflG.addColorStop(0.5, 'rgba(200,220,255,0.04)');
+    reflG.addColorStop(0.8, 'rgba(180,200,240,0.08)');
+    reflG.addColorStop(1,   'rgba(180,200,240,0.00)');
+    ctx.fillStyle = reflG;
+    ctx.fillRect(wingOffX, cSY, wingW, cH);
+
+    // ── GAP BETWEEN WINGS (dark void between Y-arms)
+    const gapG = ctx.createLinearGradient(winSX, 0, wingOffX, 0);
+    gapG.addColorStop(0, pal.sky1);
+    gapG.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = gapG;
+    ctx.fillRect(winSX, cSY, wingOffX-winSX, cH);
+
+    // Dubai skyline at base (lower zones only)
+    if(zid <= 2){
+      const baseY = Math.min(cEY, H);
+      const nBldg = 7;
+      for(let bi=0; bi<nBldg; bi++){
+        const bw2 = WIN_GW/nBldg;
+        const seed = (wi*31+bi*17)%19;
+        const bh2  = Math.max(4, (8+seed*3) * (1 - zid*0.28));
+        ctx.fillStyle = '#020810';
+        ctx.fillRect(winSX+bi*bw2, baseY-bh2, bw2-1, bh2);
+        if(seed%3===0 && bh2>8){
+          ctx.fillStyle='rgba(255,210,80,0.30)';
+          ctx.fillRect(winSX+bi*bw2+2, baseY-bh2+3, 3, 3);
         }
       }
     }
 
-    // Stars / distant city lights in sky area
-    for(let s=0;s<12;s++){
-      const starX=winSX+((wi*37+s*17)%WIN_W);
-      const starY=winSY+((wi*19+s*31)%(silH*0.6));
-      ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.fillRect(starX,starY,1,1);
-    }
+    // Ambient glow spilling from Dubai city lights
+    const cityGlow = ctx.createRadialGradient(winSX+WIN_GW/2, cEY, 0, winSX+WIN_GW/2, cEY, WIN_GW*0.7);
+    cityGlow.addColorStop(0, 'rgba(255,190,70,0.07)');
+    cityGlow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = cityGlow;
+    ctx.fillRect(winSX, cSY, WIN_GW, cH);
 
-    // Bright city light glow at horizon
-    const glowG=ctx.createRadialGradient(winSX+WIN_W/2,winEY,0,winSX+WIN_W/2,winEY,WIN_W*0.8);
-    glowG.addColorStop(0,'rgba(255,200,80,0.08)'); glowG.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=glowG; ctx.fillRect(winSX,winSY,WIN_W,winH);
+    ctx.restore(); // end window clip
 
-    // Glass reflection / tint
-    ctx.fillStyle='rgba(60,100,180,0.05)'; ctx.fillRect(winSX,winSY,WIN_W*0.35,winH);
+    // Window frame (aluminium extrusion)
+    ctx.strokeStyle = 'rgba(110,140,190,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(winSX+0.75, cSY+0.75, WIN_GW-1.5, cH-1.5);
 
-    // Window frame
-    ctx.strokeStyle='rgba(80,120,180,0.5)'; ctx.lineWidth=2;
-    ctx.strokeRect(winSX,winSY,WIN_W,winH);
-    // Cross-bar midway
-    ctx.strokeStyle='rgba(60,90,140,0.3)'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(winSX,winSY+winH*0.5); ctx.lineTo(winSX+WIN_W,winSY+winH*0.5); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(winSX+WIN_W/2,winSY); ctx.lineTo(winSX+WIN_W/2,winEY); ctx.stroke();
+    // Glass tint (blue-green reflection)
+    ctx.fillStyle = 'rgba(60,100,180,0.035)';
+    ctx.fillRect(winSX, cSY, WIN_GW*0.28, cH);
 
-    // Person silhouette inside window (based on window index)
-    const silIdx=(wi+7)%SILHOUETTES.length;
-    if(silIdx!==4){ // 4 = empty
-      ctx.fillStyle='rgba(0,0,8,0.80)';
-      const silBaseX=winSX; const silBaseY=winEY;
-      SILHOUETTES[silIdx](silBaseX,silBaseY);
+    // Warm light spill onto floor from window
+    if(cEY > H*0.3 && cEY < H+80){
+      const spG = ctx.createRadialGradient(winSX+WIN_GW/2, cEY, 0, winSX+WIN_GW/2, cEY, 90);
+      spG.addColorStop(0, pal.light);
+      spG.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = spG;
+      ctx.fillRect(winSX-10, cEY-10, WIN_GW+20, 80);
     }
   }
 
-  // Interior floor strip (front of scene)
-  const floorSY=sw(GROUND_Y);
-  const flrG=ctx.createLinearGradient(0,floorSY-6,0,floorSY+20);
-  flrG.addColorStop(0,'#1e2030'); flrG.addColorStop(1,'#0a0c14');
-  ctx.fillStyle=flrG; ctx.fillRect(0,floorSY-6,W,26);
-  ctx.fillStyle='#0a0c14'; ctx.fillRect(0,floorSY+20,W,H);
-  // Tile lines on floor
-  ctx.strokeStyle='rgba(80,100,160,0.2)'; ctx.lineWidth=1;
-  for(let tx=(-cameraX%60);tx<W;tx+=60){ ctx.beginPath(); ctx.moveTo(tx,floorSY-6); ctx.lineTo(tx,floorSY+20); ctx.stroke(); }
+  // ── PERSPECTIVE FLOOR (3D corridor illusion)
+  const floorY = sw(GROUND_Y);
+  if(floorY < H+10){
+    const fG = ctx.createLinearGradient(0, floorY-4, 0, floorY+40);
+    fG.addColorStop(0, pal.floor);
+    fG.addColorStop(0.4, '#0c0e14');
+    fG.addColorStop(1, '#080a10');
+    ctx.fillStyle = fG;
+    ctx.fillRect(0, floorY-4, W, H-(floorY-4)+40);
 
-  // Ceiling strip
-  const ceilSY=sw(WIN_TOP-30);
-  ctx.fillStyle='#0d0f18'; ctx.fillRect(0,ceilSY,W,30);
-  // Ceiling light fixtures
-  for(let lx=(-cameraX%160)+40; lx<W; lx+=160){
-    // Fluorescent tube
-    const lg=ctx.createLinearGradient(lx-40,ceilSY+18,lx+40,ceilSY+18);
-    lg.addColorStop(0,'rgba(200,220,255,0)'); lg.addColorStop(0.5,'rgba(200,220,255,0.9)'); lg.addColorStop(1,'rgba(200,220,255,0)');
-    ctx.fillStyle=lg; ctx.fillRect(lx-40,ceilSY+18,80,4);
-    // Glow
-    const glG=ctx.createRadialGradient(lx,ceilSY+20,0,lx,ceilSY+20,60);
-    glG.addColorStop(0,'rgba(180,200,255,0.12)'); glG.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=glG; ctx.beginPath(); ctx.ellipse(lx,ceilSY+20,60,30,0,0,Math.PI*2); ctx.fill();
+    // Vanishing-point perspective grid
+    const vpX = W*0.5;
+    ctx.strokeStyle = pal.fLine;
+    ctx.lineWidth = 0.8;
+    // Radiating lines to vanishing point
+    const tileStep = 60;
+    const tileOff  = -(cameraX % tileStep);
+    for(let tx=tileOff-tileStep; tx<W+tileStep; tx+=tileStep){
+      ctx.beginPath();
+      ctx.moveTo(tx, floorY+24);
+      ctx.lineTo(vpX, floorY);
+      ctx.stroke();
+    }
+    // Horizontal depth lines
+    for(let d=1; d<=7; d++){
+      const ly = floorY + d*d*2.2;
+      if(ly > H+20) break;
+      ctx.beginPath(); ctx.moveTo(0,ly); ctx.lineTo(W,ly); ctx.stroke();
+    }
+
+    // Gold/accent tile border
+    ctx.fillStyle = pal.accent;
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(0, floorY-2, W, 2);
+    ctx.globalAlpha = 1;
   }
 
-  // Zone colour tint overlay (subtle)
-  const tintAlpha=0.06+Math.sin(Date.now()/3000)*0.02;
-  const tintColors=['#4a2800','#001840','#001028','#001428','#000c20','#000410'];
-  ctx.fillStyle=tintColors[Math.min(lastZoneId>=0?lastZoneId:0,5)];
-  ctx.globalAlpha=tintAlpha; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
+  // ── CEILING
+  const ceilY = sw(WIN_TOP_W - 28);
+  if(ceilY < H && ceilY+32 > 0){
+    ctx.fillStyle = pal.col;
+    ctx.fillRect(0, ceilY, W, 32);
+    // Recessed LED strips
+    for(let lx=(-(cameraX%160)+80); lx<W+80; lx+=160){
+      const ledG = ctx.createLinearGradient(lx-55, ceilY+20, lx+55, ceilY+20);
+      ledG.addColorStop(0, 'rgba(0,0,0,0)');
+      ledG.addColorStop(0.5, pal.light);
+      ledG.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = ledG;
+      ctx.fillRect(lx-55, ceilY+18, 110, 5);
+      const glG = ctx.createRadialGradient(lx, ceilY+22, 0, lx, ceilY+22, 72);
+      glG.addColorStop(0, pal.light);
+      glG.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glG;
+      ctx.beginPath(); ctx.ellipse(lx, ceilY+22, 72, 38, 0, 0, Math.PI*2); ctx.fill();
+    }
+  }
 
-  // buildingFlash — white-gold wash on windows
+  // buildingFlash — gold wash on zone entry
   if(buildingFlash>0){
-    const fa=Math.sin(buildingFlash*0.15)*0.18;
-    ctx.fillStyle=`rgba(255,220,100,${fa})`; ctx.fillRect(0,0,W,H);
+    const fa = Math.sin(buildingFlash*0.15)*0.20;
+    ctx.fillStyle = `rgba(255,215,90,${fa})`;
+    ctx.fillRect(0,0,W,H);
   }
 }
 
@@ -946,68 +1116,127 @@ function drawHazards(){
   }
 }
 
-// ── PLATFORMS ────────────────────────────────────────────────
+// ── PLATFORMS (3D block style) ────────────────────────────────
+const PLAT_DEPTH = 7; // front-face depth in screen px
 function drawPlatforms(){
+  const zoneHues=[220,200,195,210,180,160];
   for(const p of platforms){
     if(p.gone) continue;
     const ssy=sw(p.y), ssx=sx(p.x);
-    if(ssy>H+20||ssy+p.h<-20||ssx>W+20||ssx+p.w<-20) continue;
+    if(ssy>H+24||ssy+p.h+PLAT_DEPTH<-4||ssx>W+10||ssx+p.w<-10) continue;
 
     if(p.type==='ground'){
-      const gr=ctx.createLinearGradient(0,ssy,0,ssy+p.h);
-      gr.addColorStop(0,'#2a2a3a'); gr.addColorStop(1,'#141418');
-      ctx.fillStyle=gr; ctx.fillRect(ssx,ssy,p.w,p.h);
-      ctx.fillStyle='rgba(100,120,180,0.3)'; ctx.fillRect(ssx,ssy,p.w,2);
-    } else if(p.type==='goal'){
-      ctx.shadowColor='#FFD700'; ctx.shadowBlur=22;
+      // Wide stone slab — no 3D face needed
+      const gr=ctx.createLinearGradient(0,ssy,0,ssy+p.h+4);
+      gr.addColorStop(0,'#2c2c3e'); gr.addColorStop(1,'#141418');
+      ctx.fillStyle=gr; ctx.fillRect(ssx,ssy,p.w,p.h+4);
+      ctx.fillStyle='rgba(120,140,200,0.28)'; ctx.fillRect(ssx,ssy,p.w,2);
+      // Floor tile seams
+      ctx.strokeStyle='rgba(80,100,160,0.15)'; ctx.lineWidth=1;
+      for(let tx=ssx+60-(cameraX%60);tx<ssx+p.w;tx+=60){ctx.beginPath();ctx.moveTo(tx,ssy);ctx.lineTo(tx,ssy+p.h+4);ctx.stroke();}
+      continue;
+    }
+
+    if(p.type==='goal'){
+      ctx.shadowColor='#FFD700'; ctx.shadowBlur=24;
       const gg=ctx.createLinearGradient(ssx,ssy,ssx+p.w,ssy);
       gg.addColorStop(0,'#aa7700'); gg.addColorStop(0.5,'#fff0a0'); gg.addColorStop(1,'#aa7700');
-      ctx.fillStyle=gg; ctx.fillRect(ssx,ssy,p.w,p.h); ctx.shadowBlur=0;
+      ctx.fillStyle=gg; ctx.fillRect(ssx,ssy,p.w,p.h);
+      // Front face
+      ctx.fillStyle='#6a4800';
+      ctx.fillRect(ssx,ssy+p.h,p.w,PLAT_DEPTH);
+      ctx.shadowBlur=0;
       ctx.fillStyle='#000'; ctx.font='bold 10px Fredoka One,Arial'; ctx.textAlign='center';
       ctx.fillText('🏁 EXIT',ssx+p.w/2,ssy-5);
-    } else if(p.type==='checkpoint'){
-      ctx.fillStyle='#102820'; ctx.fillRect(ssx,ssy,p.w,p.h);
-      ctx.fillStyle='rgba(0,255,100,0.4)'; ctx.fillRect(ssx,ssy,p.w,2);
-      ctx.fillStyle='#00ff88'; ctx.font='7px Nunito,Arial'; ctx.textAlign='center';
-      ctx.fillText('💾 SAVE',ssx+p.w/2,ssy-4);
-    } else if(p.type==='boss'){
-      ctx.fillStyle='#2a0000'; ctx.fillRect(ssx,ssy,p.w,p.h);
-      ctx.fillStyle='rgba(255,0,0,0.4)'; ctx.fillRect(ssx,ssy,p.w,2);
-    } else if(p.type==='collapse'){
-      const shakeX=p.collapsing?Math.sin(Date.now()/40)*3:0;
-      const frac=Math.min(1,p.collapseTimer/p.collapseMax);
-      const r=Math.round(lerp(60,180,frac)),g=Math.round(lerp(70,20,frac)),b=Math.round(lerp(130,20,frac));
-      ctx.fillStyle=`rgb(${r},${g},${b})`; ctx.fillRect(ssx+shakeX,ssy,p.w,p.h);
-      ctx.fillStyle=`rgba(255,120,50,${frac*0.7})`; ctx.fillRect(ssx+shakeX,ssy,p.w,2);
-      if(frac>0.45){ ctx.strokeStyle=`rgba(255,60,0,${frac})`; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(ssx+shakeX+p.w*0.3,ssy); ctx.lineTo(ssx+shakeX+p.w*0.4,ssy+p.h); ctx.stroke(); }
-    } else if(p.type==='seesaw'){
+      continue;
+    }
+
+    if(p.type==='seesaw'){
       ctx.save(); ctx.translate(ssx+p.w/2,ssy+p.h/2); ctx.rotate(p.tilt);
       const pg=ctx.createLinearGradient(-p.w/2,0,p.w/2,0);
       pg.addColorStop(0,'#1a4080'); pg.addColorStop(0.5,'#3a70c8'); pg.addColorStop(1,'#1a4080');
       ctx.fillStyle=pg; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);
+      // 3D front face (rotated with plank)
+      ctx.fillStyle='#0e2a55'; ctx.fillRect(-p.w/2,p.h/2,p.w,PLAT_DEPTH-1);
       ctx.fillStyle='#FFD700'; ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill();
       ctx.restore();
-    } else {
-      // Zone-tinted platform colours
-      const zoneHues=[220,200,195,210,180,160];
-      const zh=zoneHues[Math.min(p.zone||0,5)];
-      const baseCol=p.moving?`hsl(${zh},55%,20%)`:'#1e2438';
-      ctx.fillStyle=baseCol; ctx.fillRect(ssx,ssy,p.w,p.h);
-      const edgeCol=p.moving?`hsla(${zh},100%,70%,0.7)`:'rgba(100,140,220,0.35)';
-      ctx.fillStyle=edgeCol; ctx.fillRect(ssx,ssy,p.w,2);
-      // Floor tile marks
-      ctx.strokeStyle='rgba(60,80,140,0.3)'; ctx.lineWidth=1;
-      for(let tx=ssx+20;tx<ssx+p.w;tx+=20){ ctx.beginPath(); ctx.moveTo(tx,ssy+3); ctx.lineTo(tx,ssy+p.h); ctx.stroke(); }
-      // Metal edge strip
-      ctx.fillStyle='rgba(140,180,255,0.22)'; ctx.fillRect(ssx,ssy+p.h-3,p.w,3);
-      // Moving platform arrows
-      if(p.moving){
-        const arrowCol=`hsl(${zh},100%,75%)`;
-        ctx.fillStyle=arrowCol; ctx.font='8px Arial'; ctx.textAlign='center';
-        ctx.fillText(p.moveDir>0?'▶':'◀',ssx+p.w/2,ssy+p.h-2);
-      }
-      if(p.floor&&p.floor%5===0){ ctx.fillStyle='#ffffffaa'; ctx.font='bold 8px Nunito,Arial'; ctx.textAlign='left'; ctx.fillText('Fl.'+p.floor,ssx+3,ssy+11); }
+      continue;
     }
+
+    // ── Determine top/front/edge colours by type
+    let topCol, frontCol, edgeHigh, glowCol=null;
+
+    if(p.type==='checkpoint'){
+      topCol='#122e1e'; frontCol='#0a1e14'; edgeHigh='rgba(0,255,120,0.55)';
+      ctx.fillStyle='#00ff88'; ctx.font='7px Nunito,Arial'; ctx.textAlign='center';
+      ctx.fillText('💾 SAVE',ssx+p.w/2,ssy-5);
+    } else if(p.type==='boss'){
+      topCol='#3a0a0a'; frontCol='#260606'; edgeHigh='rgba(255,60,40,0.65)';
+      ctx.shadowColor='#ff2200'; ctx.shadowBlur=8;
+    } else if(p.type==='collapse'){
+      const shakeX=p.collapsing?Math.sin(Date.now()/40)*3:0;
+      const frac=Math.min(1,p.collapseTimer/p.collapseMax);
+      const r=Math.round(lerp(55,175,frac)),g2=Math.round(lerp(60,15,frac)),b=Math.round(lerp(120,15,frac));
+      topCol=`rgb(${r},${g2},${b})`; frontCol=`rgb(${Math.round(r*0.45)},${Math.round(g2*0.4)},${Math.round(b*0.4)})`;
+      edgeHigh=`rgba(255,80,20,${frac*0.85})`;
+      ssx+= shakeX; // apply shake to all subsequent draws for this platform
+    } else {
+      // Normal platform — zone-themed aluminium/concrete ledge
+      const zh=zoneHues[Math.min(p.zone||0,5)];
+      topCol   = p.moving ? `hsl(${zh},48%,21%)` : `hsl(${zh},38%,16%)`;
+      frontCol = p.moving ? `hsl(${zh},48%,11%)` : `hsl(${zh},35%,9%)`;
+      edgeHigh = p.moving ? `hsla(${zh},100%,72%,0.7)` : `rgba(110,150,230,0.32)`;
+      if(p.moving) glowCol = `hsla(${zh},100%,62%,0.22)`;
+    }
+
+    // ── TOP SURFACE
+    ctx.fillStyle = topCol;
+    ctx.fillRect(ssx, ssy, p.w, p.h);
+
+    // Top edge highlight
+    ctx.fillStyle = edgeHigh;
+    ctx.fillRect(ssx, ssy, p.w, 2);
+
+    // Tile seams on top surface
+    ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+    for(let tx=ssx+18; tx<ssx+p.w-4; tx+=18){
+      ctx.beginPath(); ctx.moveTo(tx,ssy+2); ctx.lineTo(tx,ssy+p.h-1); ctx.stroke();
+    }
+
+    // ── FRONT FACE (depth)
+    const frontG=ctx.createLinearGradient(0,ssy+p.h,0,ssy+p.h+PLAT_DEPTH);
+    frontG.addColorStop(0, frontCol);
+    frontG.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle=frontG;
+    ctx.fillRect(ssx, ssy+p.h, p.w, PLAT_DEPTH);
+
+    // ── RIGHT EDGE SHADOW
+    ctx.fillStyle='rgba(0,0,0,0.30)';
+    ctx.fillRect(ssx+p.w, ssy+2, 2, p.h+PLAT_DEPTH-2);
+
+    // ── LEFT EDGE HIGHLIGHT
+    ctx.fillStyle='rgba(255,255,255,0.04)';
+    ctx.fillRect(ssx, ssy+2, 2, p.h-2);
+
+    // ── GLOW UNDER MOVING PLATFORMS
+    if(glowCol){
+      const glG=ctx.createLinearGradient(0,ssy+p.h+PLAT_DEPTH,0,ssy+p.h+PLAT_DEPTH+18);
+      glG.addColorStop(0,glowCol); glG.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=glG; ctx.fillRect(ssx,ssy+p.h+PLAT_DEPTH,p.w,18);
+      // Direction arrows
+      const zh=zoneHues[Math.min(p.zone||0,5)];
+      ctx.fillStyle=`hsla(${zh},100%,78%,0.85)`;
+      ctx.font='7px Arial'; ctx.textAlign='center';
+      ctx.fillText(p.moveDir>0?'▶▶':'◀◀',ssx+p.w/2,ssy+p.h-1);
+    }
+
+    // Floor number badge
+    if(p.floor&&p.floor%5===0){
+      ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.font='bold 7px Nunito,Arial'; ctx.textAlign='left';
+      ctx.fillText('Fl.'+p.floor,ssx+3,ssy+p.h-1);
+    }
+
+    ctx.shadowBlur=0;
   }
 }
 
