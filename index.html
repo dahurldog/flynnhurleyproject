@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Burj Khalifa Climber – Year 4 & 5 Maths Project</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#030810;display:flex;flex-direction:column;align-items:center;
+     min-height:100vh;font-family:'Nunito',Arial,sans-serif;overflow-x:hidden;}
+
+/* ── SCHOOL BANNER ── */
+#schoolBanner{
+  width:100%;max-width:480px;
+  background:linear-gradient(135deg,#1a237e,#0d1b6e);
+  border-bottom:3px solid #FFD700;
+  padding:7px 14px;display:flex;align-items:center;
+  justify-content:space-between;gap:6px;
+}
+.banner-left .title{color:#FFD700;font-family:'Fredoka One',sans-serif;font-size:17px;}
+.banner-left .subtitle{color:#8899dd;font-size:11px;font-weight:600;}
+.badge{background:#FFD700;color:#000;font-size:11px;font-weight:800;
+       border-radius:20px;padding:3px 11px;white-space:nowrap;}
+
+/* ── PROGRESS BAR ── */
+#progressWrap{width:480px;position:relative;}
+#progressBar{width:100%;height:8px;background:#111;border:1px solid #FFD70055;border-top:none;overflow:hidden;}
+#progressFill{height:100%;background:linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c);width:0%;transition:width .5s;}
+#progressLabel{position:absolute;top:-1px;right:5px;color:#FFD70088;font-size:9px;pointer-events:none;}
+
+/* ── GAME CONTAINER ── */
+#gameContainer{position:relative;}
+canvas{display:block;border:2px solid #FFD70066;border-top:none;}
+
+/* ── ZONE BANNER (in-game overlay) ── */
+#zoneBanner{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;pointer-events:none;z-index:8;opacity:0;
+  transition:opacity .4s;
+}
+#zoneBanner.show{opacity:1;}
+#zoneBanner .zname{font-family:'Fredoka One',sans-serif;font-size:26px;color:#FFD700;
+  text-shadow:0 0 30px #FFD700,0 0 60px #FFD70066;}
+#zoneBanner .zdesc{color:#aabcff;font-size:13px;margin-top:4px;}
+
+/* ── ABILITY POPUP ── */
+#abilityPopup{
+  position:absolute;top:140px;left:50%;transform:translateX(-50%);
+  background:rgba(0,8,30,0.92);border:2px solid #00FFFF;border-radius:12px;
+  padding:10px 20px;text-align:center;pointer-events:none;z-index:9;
+  opacity:0;transition:opacity .3s;min-width:240px;
+}
+#abilityPopup.show{opacity:1;}
+#abilityPopup .aname{font-family:'Fredoka One',sans-serif;font-size:20px;color:#00FFFF;}
+#abilityPopup .adesc{color:#88eeff;font-size:12px;margin-top:3px;}
+
+/* ── FACT POPUP ── */
+#factPopup{
+  position:absolute;bottom:46px;left:50%;transform:translateX(-50%);
+  background:rgba(8,18,50,0.9);border:1px solid #4466ff66;
+  border-radius:8px;padding:6px 12px;
+  color:#aabcff;font-size:11px;max-width:300px;text-align:center;
+  pointer-events:none;z-index:5;opacity:0;transition:opacity .4s;
+}
+#factPopup.show{opacity:1;}
+
+/* ── MATH OVERLAY – exercise book ── */
+#mathOverlay{display:none;position:absolute;top:0;left:0;width:100%;height:100%;
+  background:rgba(2,6,20,0.9);pointer-events:all;
+  flex-direction:column;align-items:center;justify-content:center;z-index:10;}
+#mathOverlay.active{display:flex;}
+#mathBox{
+  background:#fffff0;border:3px solid #1565c0;border-radius:3px;
+  width:92%;max-width:440px;overflow:hidden;
+  box-shadow:0 8px 40px #0008,0 0 0 2px #FFD700;position:relative;
+}
+#mathBox::before{content:'';position:absolute;left:42px;top:0;bottom:0;border-left:2px solid #ff8888;}
+#mathHeader{background:linear-gradient(135deg,#1565c0,#0d47a1);
+  color:#fff;padding:10px 12px 10px 48px;
+  display:flex;justify-content:space-between;align-items:center;}
+#mathHeader h2{font-family:'Fredoka One',sans-serif;font-size:15px;color:#FFD700;}
+.floor-tag{font-size:10px;color:#aabcff;}
+#mathFact{background:#e8f4fd;border-bottom:1px solid #bee3f8;
+  padding:7px 12px 7px 48px;color:#1565c0;font-size:12px;font-weight:600;font-style:italic;line-height:1.5;}
+#mathBody{padding:12px 12px 12px 50px;
+  background-image:repeating-linear-gradient(transparent,transparent 22px,#c8dce8 22px,#c8dce8 23px);
+  background-size:100% 23px;min-height:130px;}
+#mathQuestion{color:#111;font-size:16px;font-weight:800;margin-bottom:12px;line-height:1.4;}
+#mathAnswers{display:flex;flex-wrap:wrap;gap:7px;}
+.math-btn{background:#fff;color:#1565c0;border:2px solid #1565c0;border-radius:5px;
+  padding:7px 16px;font-size:14px;font-weight:700;cursor:pointer;
+  font-family:'Nunito',sans-serif;transition:all .15s;pointer-events:all;}
+.math-btn:hover{background:#1565c0;color:#fff;transform:scale(1.04);}
+.math-btn.correct{background:#2e7d32!important;color:#fff;border-color:#2e7d32;}
+.math-btn.wrong{background:#c62828!important;color:#fff;border-color:#c62828;}
+#mathFeedback{padding:8px 12px 10px 50px;font-size:13px;font-weight:700;
+  min-height:28px;border-top:1px dashed #aaa;background:#fffff0;}
+
+/* ── SHOP ── */
+#shopOverlay{display:none;position:absolute;top:0;left:0;width:100%;height:100%;
+  background:rgba(2,6,20,0.95);pointer-events:all;
+  flex-direction:column;align-items:center;justify-content:center;z-index:10;}
+#shopOverlay.active{display:flex;}
+#shopBox{background:linear-gradient(160deg,#0d1530,#172045);border:2px solid #FFD700;
+  border-radius:12px;padding:18px 16px;width:92%;max-width:440px;}
+#shopBox h2{color:#FFD700;font-family:'Fredoka One',sans-serif;font-size:20px;text-align:center;margin-bottom:4px;}
+#shopBox p{color:#aabcff;font-size:12px;text-align:center;margin-bottom:12px;}
+.skin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:12px;}
+.skin-item{background:#080f28;border:2px solid #334;border-radius:9px;padding:11px 5px;
+  cursor:pointer;transition:all .18s;text-align:center;}
+.skin-item:hover{border-color:#FFD700;transform:scale(1.03);}
+.skin-item.owned{border-color:#00cc66;}
+.skin-item.equipped{border-color:#FFD700;box-shadow:0 0 12px #FFD70066;}
+.skin-icon{font-size:24px;margin-bottom:4px;}
+.skin-name{color:#fff;font-size:10px;font-weight:700;}
+.skin-price{color:#00FFFF;font-size:10px;margin-top:2px;}
+#closeShop{display:block;width:100%;background:#c62828;color:#fff;border:none;
+  border-radius:7px;padding:9px;font-size:14px;font-weight:700;cursor:pointer;
+  font-family:'Nunito',sans-serif;}
+#closeShop:hover{background:#e53935;}
+
+/* ── TITLE SCREEN ── */
+#titleScreen{display:flex;position:absolute;top:0;left:0;width:100%;height:100%;
+  pointer-events:all;z-index:20;
+  flex-direction:column;align-items:center;justify-content:center;}
+.title-logo{font-family:'Fredoka One',sans-serif;font-size:32px;color:#FFD700;
+  text-shadow:0 0 30px #FFD700aa,0 3px 0 #7a5800;text-align:center;line-height:1.2;margin-bottom:4px;}
+.title-sub{color:#aabcff;font-size:13px;font-weight:600;text-align:center;margin-bottom:6px;}
+.school-tag{background:#FFD700;color:#000;font-size:11px;font-weight:800;
+  border-radius:20px;padding:4px 14px;margin-bottom:6px;}
+.metroid-tag{background:rgba(0,255,100,0.15);border:1px solid #00ff66;color:#00ff88;
+  font-size:11px;font-weight:700;border-radius:20px;padding:3px 12px;margin-bottom:18px;}
+#startBtn{background:linear-gradient(135deg,#FFD700,#ff9500);color:#000;border:none;
+  border-radius:50px;padding:14px 48px;font-size:20px;font-weight:800;cursor:pointer;
+  font-family:'Fredoka One',sans-serif;box-shadow:0 0 28px #FFD700aa;transition:transform .18s;}
+#startBtn:hover{transform:scale(1.07);}
+.title-facts{margin-top:16px;color:#7788bb;font-size:11px;line-height:1.8;
+  text-align:center;max-width:340px;}
+.title-facts strong{color:#FFD700;}
+.controls-hint{margin-top:12px;color:#556688;font-size:10px;text-align:center;}
+</style>
+</head>
+<body>
+
+<div id="schoolBanner">
+  <div class="banner-left">
+    <div class="title">🏙️ Burj Khalifa Climber</div>
+    <div class="subtitle">Interactive Maths Learning Adventure · UAE Geography</div>
+  </div>
+  <div class="badge">📚 Year 4 &amp; 5</div>
+</div>
+
+<div id="progressWrap">
+  <div id="progressBar"><div id="progressFill"></div></div>
+  <span id="progressLabel">0% climbed</span>
+</div>
+
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="480" height="600"></canvas>
+
+  <audio id="bgMusic" loop preload="auto">
+    <source src="https://www.soundjay.com/misc/sounds/space-ambience-01.mp3" type="audio/mpeg">
+  </audio>
+
+  <!-- Zone transition banner -->
+  <div id="zoneBanner">
+    <div class="zname" id="zoneNameEl"></div>
+    <div class="zdesc" id="zoneDescEl"></div>
+  </div>
+
+  <!-- Ability unlock popup -->
+  <div id="abilityPopup">
+    <div class="aname" id="abilityNameEl"></div>
+    <div class="adesc" id="abilityDescEl"></div>
+  </div>
+
+  <!-- Fact popup -->
+  <div id="factPopup" id="factPopup"></div>
+
+  <!-- HUD is drawn on canvas; only overlays in HTML -->
+
+  <!-- MATH OVERLAY -->
+  <div id="mathOverlay">
+    <div id="mathBox">
+      <div id="mathHeader">
+        <h2>📐 Maths Checkpoint!</h2>
+        <span class="floor-tag" id="mathFloorTag">Floor ?</span>
+      </div>
+      <div id="mathFact"></div>
+      <div id="mathBody">
+        <div id="mathQuestion"></div>
+        <div id="mathAnswers"></div>
+      </div>
+      <div id="mathFeedback"></div>
+    </div>
+  </div>
+
+  <!-- SHOP -->
+  <div id="shopOverlay">
+    <div id="shopBox">
+      <h2>🛍️ Character Shop</h2>
+      <p>💎 Diamonds: <strong id="shopDia" style="color:#FFD700">0</strong></p>
+      <div class="skin-grid" id="skinGrid"></div>
+      <button id="closeShop">✕ Close Shop</button>
+    </div>
+  </div>
+
+  <!-- TITLE -->
+  <div id="titleScreen">
+    <div class="title-logo">🏙️ Burj Khalifa<br>Climber!</div>
+    <div class="title-sub">Dubai Maths Adventure</div>
+    <div class="school-tag">📚 Year 4 &amp; 5 School Project</div>
+    <div class="metroid-tag">🗺️ Metroidvania · Explore &amp; Unlock</div>
+    <button id="startBtn">▶ START CLIMBING!</button>
+    <div class="title-facts">
+      <strong>Burj Khalifa</strong> · <strong>828 m</strong> tall · <strong>163 floors</strong><br>
+      World's tallest building · <strong>Dubai, UAE</strong><br>
+      Opened <strong>4 Jan 2010</strong> · Architect: <strong>Adrian Smith</strong><br>
+      By <strong>Flynn Hurley</strong> · Tamborine Mountain State School · Class 4J
+    </div>
+    <div class="controls-hint">
+      ←→ Move &nbsp;·&nbsp; ↑/Z Jump (×2 with ability) &nbsp;·&nbsp; X Slide/Dash<br>
+      Space Attack &nbsp;·&nbsp; ↑+Wall Wall-Jump &nbsp;·&nbsp; S Shop &nbsp;·&nbsp; M Map
+    </div>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
