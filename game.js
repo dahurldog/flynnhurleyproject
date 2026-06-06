@@ -290,7 +290,7 @@ function generateLevel(lvl){
 
   // ── KEYS (one per zone transition, placed mid-zone)
   const keyTypes=['bronze','silver','gold'];
-  [1,3,5].forEach((zi,ki)=>{
+  [0,1,2].forEach((zi,ki)=>{
     const zonePlats=platforms.filter(p=>p.zone===zi&&p.type==='platform');
     if(zonePlats.length>0){
       const p=zonePlats[Math.floor(zonePlats.length/2)];
