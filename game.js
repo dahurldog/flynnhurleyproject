@@ -24,6 +24,40 @@ let dashTrail = [];
 let switches = [];
 function triggerShake(amt){ screenShake = Math.min(14, screenShake + amt); }
 
+// ── SOUND (Web Audio API) ──────────────────────────────────────
+let _audioCtx = null, soundEnabled = true;
+function _ac(){ if(!_audioCtx) _audioCtx=new(window.AudioContext||window.webkitAudioContext)(); return _audioCtx; }
+function tone(freq,type,dur,vol=0.22,freqEnd=null){
+  if(!soundEnabled) return;
+  try{
+    const ac=_ac(),o=ac.createOscillator(),g=ac.createGain();
+    o.connect(g); g.connect(ac.destination); o.type=type;
+    o.frequency.setValueAtTime(freq,ac.currentTime);
+    if(freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd,ac.currentTime+dur);
+    g.gain.setValueAtTime(vol,ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+dur);
+    o.start(ac.currentTime); o.stop(ac.currentTime+dur);
+  }catch(e){}
+}
+const SFX={
+  jump:      ()=>tone(300,'square',0.11,0.14,440),
+  djump:     ()=>tone(480,'square',0.14,0.12,660),
+  walljump:  ()=>tone(260,'square',0.11,0.12,400),
+  land:      ()=>tone(100,'square',0.07,0.18,70),
+  dash:      ()=>tone(220,'sawtooth',0.08,0.11,380),
+  hit:       ()=>tone(110,'sawtooth',0.22,0.32,75),
+  diamond:   ()=>tone(900,'sine',0.13,0.07,1150),
+  food:      ()=>tone(440,'sine',0.11,0.09,560),
+  kill:      ()=>{ tone(250,'sawtooth',0.09,0.28,175); setTimeout(()=>tone(160,'sawtooth',0.11,0.22,95),85); },
+  checkpoint:()=>{ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,'sine',0.14,0.11),i*80)); },
+  correct:   ()=>{ [523,659,784].forEach((f,i)=>setTimeout(()=>tone(f,'sine',0.12,0.11),i*100)); },
+  wrong:     ()=>tone(155,'sawtooth',0.28,0.35,90),
+  levelUp:   ()=>{ [262,330,392,523,659].forEach((f,i)=>setTimeout(()=>tone(f,'sine',0.18,0.16),i*100)); },
+  unlock:    ()=>{ [392,523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,'triangle',0.2,0.15),i*90)); },
+};
+
+let paused = false;
+
 function sx(wx){ return wx - cameraX; }
 function sw(wy){ return wy - cameraY; }
 function lerp(a,b,t){ return a+(b-a)*t; }
@@ -85,6 +119,25 @@ const QUESTIONS = [
   {cat:'maths',y:5,q:"What is 7² (seven squared)?",a:49,opts:[14,42,49,56],fact:"The spire alone adds over 200 m to the height!"},
   {cat:'trivia',y:4,q:"On which continent is the UAE?",a:'Asia',opts:['Africa','Europe','Asia','Oceania'],fact:"The UAE is in Western Asia (the Middle East)!"},
   {cat:'trivia',y:5,q:"What is the observation deck on floor 148 called?",a:'At the Top',opts:['Sky Bridge','At the Top','Cloud Nine','Summit View'],fact:"'At the Top Sky' offers stunning 360° views!"},
+  // ── Extra questions ─────────────────────────────────────────
+  {cat:'maths',y:4,q:"What is 6 × 7?",a:42,opts:[36,40,42,48],fact:"The Burj Khalifa's lobby is 4 storeys high!"},
+  {cat:'maths',y:4,q:"What is 8 × 6?",a:48,opts:[42,46,48,56],fact:"Construction started in September 2004!"},
+  {cat:'maths',y:4,q:"163 floors × 2 = ?",a:326,opts:[266,306,326,366],fact:"No other building has more than 130 floors above ground!"},
+  {cat:'maths',y:4,q:"What is 100 – 37?",a:63,opts:[53,57,63,73],fact:"The Burj Khalifa's foundation has 192 concrete piles!"},
+  {cat:'maths',y:4,q:"What is 9 × 12?",a:108,opts:[96,108,118,121],fact:"The building uses 55,000 tonnes of steel rebar!"},
+  {cat:'maths',y:4,q:"Half of 828 metres is?",a:414,opts:[404,410,414,420],fact:"The Burj Khalifa's concrete was cooled with ice to withstand the Dubai heat!"},
+  {cat:'maths',y:5,q:"What is 45 × 4?",a:180,opts:[160,170,180,200],fact:"The Burj Khalifa is visible from 95 km away on a clear day!"},
+  {cat:'maths',y:5,q:"What is 720 ÷ 9?",a:80,opts:[70,75,80,90],fact:"Each window takes 3 to 4 months to clean from top to bottom!"},
+  {cat:'maths',y:5,q:"A window is 2.4 m tall. Total height for 50 windows?",a:120,opts:[100,110,120,130],fact:"There are 24,348 individual windows on the Burj Khalifa!"},
+  {cat:'maths',y:5,q:"What is 15% of 800?",a:120,opts:[80,100,120,160],fact:"36 workers spend 3 months cleaning all the windows!"},
+  {cat:'maths',y:5,q:"What is 12 squared (12²)?",a:144,opts:[121,132,144,156],fact:"The Burj Khalifa was designed by architect Adrian Smith!"},
+  {cat:'maths',y:5,q:"What is 25% of 828?",a:207,opts:[182,196,207,220],fact:"The tower sways up to 1.5 metres in strong wind at the top!"},
+  {cat:'trivia',y:4,q:"What material makes up most of the Burj Khalifa's exterior?",a:'Glass',opts:['Brick','Glass','Stone','Steel'],fact:"The facade uses 103,000 m² of reflective glass!"},
+  {cat:'trivia',y:4,q:"Which ocean is near Dubai?",a:'Indian Ocean',opts:['Pacific','Atlantic','Indian Ocean','Arctic'],fact:"Dubai sits on the Persian Gulf, linked to the Indian Ocean!"},
+  {cat:'trivia',y:5,q:"How many workers were on site daily at peak construction?",a:12000,opts:[5000,8000,12000,22000],fact:"At peak, 12,000 workers were on site every single day!"},
+  {cat:'trivia',y:5,q:"What record did the Burj Khalifa break?",a:'World\'s tallest building',opts:['Most floors','World\'s tallest building','Most lifts','Fastest elevators'],fact:"It beat the CN Tower record that stood since 1976!"},
+  {cat:'maths',y:4,q:"If you climb 5 floors per minute, how many in 20 minutes?",a:100,opts:[80,90,100,110],fact:"The Burj Khalifa's fastest lift takes just 60 seconds to reach floor 124!"},
+  {cat:'maths',y:5,q:"The tower is 828 m. The spire is 200 m. How tall is the rest?",a:628,opts:[608,618,628,638],fact:"The radio/TV mast at the very top is hollow steel!"},
 ];
 
 // ── SKINS / WEAPONS / FOODS ───────────────────────────────────
@@ -139,8 +192,15 @@ window.addEventListener('keydown',e=>{
   if(e.code==='KeyS'&&state==='playing') openShop();
   if(e.code==='KeyM'&&state==='playing') mapOpen=!mapOpen;
   if(e.code==='KeyR'&&state==='gameover') restartGame();
+  if(e.code==='KeyP'&&(state==='playing'||paused)){ paused=!paused; }
+  if(e.code==='KeyQ') toggleSound();
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
 });
+function toggleSound(){
+  soundEnabled=!soundEnabled;
+  const el=document.getElementById('soundBtn');
+  if(el) el.textContent=soundEnabled?'🔊':'🔇';
+}
 window.addEventListener('keyup',e=>{ keys[e.code]=false; delete justPressed[e.code]; });
 function jp(c){ return !!justPressed[c]; }
 
@@ -364,11 +424,11 @@ function askQuestion(cb,forDoor){
       if(ok){
         const praise=['⭐ Excellent! +15 💎','🌟 Brilliant! +15 💎','🎉 Super! +15 💎','✅ Well done! +15 💎'];
         fb.textContent=praise[idx%praise.length]; fb.style.color='#2e7d32';
-        diamonds+=15; buildingFlash=90;
+        diamonds+=15; buildingFlash=90; SFX.correct();
         setTimeout(()=>{ closeMath(); if(cb) cb(true); },900);
       } else {
         fb.textContent=`❌ Answer: ${q.a} — keep practising!`; fb.style.color='#c62828';
-        PL.hp=Math.max(0,PL.hp-1);
+        PL.hp=Math.max(0,PL.hp-1); SFX.wrong();
         setTimeout(()=>{ closeMath(); if(cb) cb(false); if(PL.hp<=0) gameOver(); },1800);
       }
     };
@@ -377,6 +437,29 @@ function askQuestion(cb,forDoor){
   document.getElementById('mathOverlay').classList.add('active');
 }
 function closeMath(){ document.getElementById('mathOverlay').classList.remove('active'); state='playing'; }
+
+// ── ABILITY UNLOCK ────────────────────────────────────────────
+function unlockAbility(key, name, desc){
+  abilities[key] = true;
+  document.getElementById('abilityNameEl').textContent = name;
+  document.getElementById('abilityDescEl').textContent = desc;
+  const el = document.getElementById('abilityPopup');
+  el.classList.add('show');
+  SFX.unlock();
+  setTimeout(()=> el.classList.remove('show'), 3500);
+}
+
+// ── HIGH SCORES ───────────────────────────────────────────────
+function loadHS(){ try{ return JSON.parse(localStorage.getItem('burjHS')||'{}'); }catch(e){ return {}; } }
+function saveHS(){
+  try{
+    const hs = loadHS();
+    hs.level    = Math.max(hs.level    || 1, gameLevel);
+    hs.diamonds = Math.max(hs.diamonds || 0, diamonds);
+    hs.combo    = Math.max(hs.combo    || 0, comboMax);
+    localStorage.setItem('burjHS', JSON.stringify(hs));
+  }catch(e){}
+}
 
 // ── SHOP ──────────────────────────────────────────────────────
 function openShop(){
@@ -444,6 +527,7 @@ function spawnFirework(){
 // ── UPDATE ────────────────────────────────────────────────────
 function update(){
   if(state!=='playing') return;
+  if(paused) return;
 
   PL.runTick++; if(PL.runTick>=PL.RUN_SPEED){PL.runTick=0;PL.runFrame=(PL.runFrame+1)%6;}
   if(PL.landTick>0) PL.landTick--;
@@ -468,7 +552,7 @@ function update(){
   if((jp('KeyX')||jp('ShiftLeft'))&&!PL.dashing){
     if(abilities.dash&&PL.dashCooldown===0){
       PL.dashing=true; PL.dashTimer=14; PL.dashCooldown=42;
-      spawnParts(PL.x+PL.w/2,PL.y+PL.h/2,'#ff8800aa',8,5);
+      spawnParts(PL.x+PL.w/2,PL.y+PL.h/2,'#ff8800aa',8,5); SFX.dash();
     }
   }
 
@@ -501,13 +585,13 @@ function update(){
   if(wj){
     if(PL.wallSliding&&abilities.wallJump){
       PL.vy=-8;PL.vx=-PL.wallDir*3.5;PL.facing=-PL.wallDir;PL.wallJumpCooldown=18;PL.djAvail=true;
-      spawnParts(PL.x+PL.w/2,PL.y+PL.h/2,'#00ff88aa',6,3);
+      spawnParts(PL.x+PL.w/2,PL.y+PL.h/2,'#00ff88aa',6,3); SFX.walljump();
     } else if(PL.coyote>0){
       PL.vy=-8;PL.coyote=0;PL.onGround=false;
-      spawnParts(PL.x+PL.w/2,PL.y+PL.h,'#FFD70077',4);
+      spawnParts(PL.x+PL.w/2,PL.y+PL.h,'#FFD70077',4); SFX.jump();
     } else if(PL.djAvail&&abilities.doubleJump){
       PL.vy=-7.5;PL.djAvail=false;
-      spawnParts(PL.x+PL.w/2,PL.y+PL.h/2,'#00FFFFaa',8,4);
+      spawnParts(PL.x+PL.w/2,PL.y+PL.h/2,'#00FFFFaa',8,4); SFX.djump();
     }
   }
 
@@ -541,7 +625,7 @@ function update(){
     if(PL.vy>=0&&PL.y+PL.h>=surfY&&PL.y+PL.h<=surfY+p.h+Math.abs(PL.vy)+2){
       PL.y=surfY-PL.h; PL.vy=0; PL.onGround=true;
       if(p.moving) PL.x=Math.max(0,Math.min(WORLD_W-PL.w,PL.x+(p.movVx||0)));
-      if(!wasOnGround) PL.landTick=8;
+      if(!wasOnGround){ PL.landTick=8; SFX.land(); }
       if(p.type==='seesaw'){
         PL.seesawPlatIdx=pi;
         p.tiltV+=(PL.x+PL.w/2-(p.x+p.w/2))/(p.w/2)*0.018;
@@ -584,7 +668,7 @@ function update(){
   for(const hz of hazards){
     if(PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:hz.x,y:hz.y,w:hz.w,h:hz.h})){
       PL.hp--; PL.invincible=80; PL.vy=-5;
-      triggerShake(5); hitFlash=12;
+      triggerShake(5); hitFlash=12; SFX.hit();
       spawnParts(PL.x+PL.w/2,PL.y,'#ff4400',8);
       if(PL.hp<=0){gameOver();return;}
     }
@@ -602,7 +686,7 @@ function update(){
     if(en.ranged){ en.shootTimer--; if(en.shootTimer<=0){ en.shootTimer=80+Math.floor(Math.random()*60); const dx=PL.x-en.x,dy=PL.y-en.y,dist=Math.sqrt(dx*dx+dy*dy)||1,spd=1.4+gameLevel*0.1; projectiles.push({x:en.x+en.w/2,y:en.y+en.h/2,vx:dx/dist*spd,vy:dy/dist*spd,life:120,fromBoss:en.isBoss,r:en.isBoss?5:4}); } }
     if(PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:en.x,y:en.y,w:en.w,h:en.h})){
       PL.hp-=en.isBoss?2:1; PL.invincible=90; PL.vy=-5; en.attackAnim=15;
-      triggerShake(en.isBoss?8:5); hitFlash=14;
+      triggerShake(en.isBoss?8:5); hitFlash=14; SFX.hit();
       spawnParts(PL.x+PL.w/2,PL.y,'#ff4400',8);
       if(PL.hp<=0){gameOver();return;}
     }
@@ -635,10 +719,10 @@ function update(){
     const cy=col.y+Math.sin(col.bob)*3;
     if(overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:col.x,y:cy,w:col.w,h:col.h})){
       col.collected=true;
-      if(col.type==='diamond'){ diamonds+=1+Math.floor(gameLevel/2); spawnParts(col.x+7,col.y,'#00FFFFaa',5,3); }
-      else if(col.type==='food'){ PL.hp=Math.min(PL.maxHp,PL.hp+col.food.heal); showFact(col.food.icon+' +'+col.food.heal+' HP!'); spawnParts(col.x+9,col.y,'#00ff88aa',6,3); }
-      else if(col.type==='key'){ diamonds+=30; showFact('🔑 Rare Key! +30 💎'); spawnParts(col.x+8,col.y,KEY_COLORS[col.keyColor],14,4); }
-      else if(col.type==='checkpoint'){ PL.checkpointX=PL.x; PL.checkpointY=PL.y; PL.hp=Math.min(PL.maxHp,PL.hp+2); showFact('💾 Checkpoint! +2 HP'); spawnParts(col.x+10,col.y,'#00ff88',12,4); }
+      if(col.type==='diamond'){ diamonds+=1+Math.floor(gameLevel/2); spawnParts(col.x+7,col.y,'#00FFFFaa',5,3); SFX.diamond(); }
+      else if(col.type==='food'){ PL.hp=Math.min(PL.maxHp,PL.hp+col.food.heal); showFact(col.food.icon+' +'+col.food.heal+' HP!'); spawnParts(col.x+9,col.y,'#00ff88aa',6,3); SFX.food(); }
+      else if(col.type==='key'){ diamonds+=30; showFact('🔑 Rare Key! +30 💎'); spawnParts(col.x+8,col.y,KEY_COLORS[col.keyColor],14,4); SFX.checkpoint(); }
+      else if(col.type==='checkpoint'){ PL.checkpointX=PL.x; PL.checkpointY=PL.y; PL.hp=Math.min(PL.maxHp,PL.hp+2); showFact('💾 Checkpoint! +2 HP'); spawnParts(col.x+10,col.y,'#00ff88',12,4); SFX.checkpoint(); }
     }
   }
 
@@ -683,7 +767,7 @@ function doAttack(){
       en.hp-=wep.dmg; en.stunned=en.isBoss?10:18;
       combo++; comboTimer=90; if(combo>comboMax) comboMax=combo;
       spawnParts(en.x+en.w/2,en.y+en.h/2,'#ff8800aa',8);
-      if(en.hp<=0){ en.dead=true; triggerShake(en.isBoss?6:2); diamonds+=en.isBoss?40+gameLevel*10:5+gameLevel*2; spawnParts(en.x+en.w/2,en.y+en.h/2,'#FFD700aa',20,6); }
+      if(en.hp<=0){ en.dead=true; triggerShake(en.isBoss?6:2); diamonds+=en.isBoss?40+gameLevel*10:5+gameLevel*2; spawnParts(en.x+en.w/2,en.y+en.h/2,'#FFD700aa',20,6); SFX.kill(); }
     }
   });
   for(let i=projectiles.length-1;i>=0;i--){
@@ -693,10 +777,14 @@ function doAttack(){
 }
 
 function levelComplete(){
-  triggerShake(10); fireworkTimer=300;
+  triggerShake(10); fireworkTimer=300; SFX.levelUp();
+  if(gameLevel===1 && !abilities.doubleJump) unlockAbility('doubleJump','⚡ Double Jump!','Tap JUMP again while in the air to jump a second time!');
+  else if(gameLevel===2 && !abilities.wallJump) unlockAbility('wallJump','🧗 Wall Jump!','Slide against a wall, then tap JUMP to launch off it!');
+  else if(gameLevel===3 && !abilities.dash) unlockAbility('dash','💨 Dash!','Tap DASH to burst forward at speed — great for gaps!');
+  saveHS();
   setTimeout(()=>{ gameLevel++; generateLevel(gameLevel); PL.maxHp=Math.min(9,PL.maxHp+1); PL.hp=PL.maxHp; state='playing'; showFact('🏆 Level '+gameLevel+'!'); },3200);
 }
-function gameOver(){ state='gameover'; }
+function gameOver(){ state='gameover'; saveHS(); }
 function restartGame(){ gameLevel=1; diamonds=0; abilities.doubleJump=false; abilities.wallJump=false; abilities.dash=false; lastZoneId=-1; generateLevel(1); state='playing'; bgMusic.play(); }
 
 // ── DRAW ─────────────────────────────────────────────────────
@@ -726,6 +814,7 @@ function draw(){
   drawHUD();
   ctx.restore();
   if(mapOpen) drawMap();
+  if(paused) drawPaused();
   if(state==='gameover') drawGameOver();
 }
 
@@ -1719,14 +1808,51 @@ function drawMap(){
   ctx.fillStyle='#666';ctx.font='9px Nunito,Arial';ctx.textAlign='center';ctx.fillText('M to close',mx+mw/2,my+mh+20);
 }
 
+// ── PAUSE SCREEN ──────────────────────────────────────────────
+function drawPaused(){
+  ctx.fillStyle='rgba(0,0,18,0.82)'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#FFD700'; ctx.font='bold 40px Fredoka One,Arial'; ctx.textAlign='center';
+  ctx.fillText('⏸ PAUSED',W/2,H/2-40);
+  ctx.fillStyle='#aabcff'; ctx.font='15px Nunito,Arial';
+  ctx.fillText('Tap ⏸ or press P to resume',W/2,H/2+2);
+  const hs=loadHS();
+  if(hs.level||hs.diamonds){
+    ctx.fillStyle='rgba(255,215,0,0.08)';
+    if(ctx.roundRect) ctx.roundRect(W/2-110,H/2+22,220,58,10); else ctx.rect(W/2-110,H/2+22,220,58);
+    ctx.fill();
+    ctx.fillStyle='#FFD700'; ctx.font='bold 10px Nunito,Arial';
+    ctx.fillText('🏆 PERSONAL BEST',W/2,H/2+38);
+    ctx.fillStyle='#aabcff'; ctx.font='11px Nunito,Arial';
+    ctx.fillText('Level '+( hs.level||1)+' · 💎 '+(hs.diamonds||0)+' · Combo '+(hs.combo||0)+'×',W/2,H/2+58);
+  }
+  ctx.fillStyle='#334466'; ctx.font='10px Nunito,Arial';
+  ctx.fillText('S = Shop  M = Map  Q = Sound toggle',W/2,H/2+88);
+}
+
 // ── GAME OVER ─────────────────────────────────────────────────
 function drawGameOver(){
-  ctx.fillStyle='rgba(0,0,18,0.9)';ctx.fillRect(0,0,W,H);
-  ctx.fillStyle='#ff4444';ctx.font='bold 44px Fredoka One,Arial';ctx.textAlign='center';ctx.fillText('GAME OVER',W/2,H/2-60);
-  ctx.fillStyle='#FFD700';ctx.font='18px Fredoka One,Arial';ctx.fillText('Zone: '+getZone(PL.x).name,W/2,H/2-20);ctx.fillText('💎 '+diamonds+' diamonds',W/2,H/2+10);
-  ctx.fillStyle='#88aaff';ctx.font='14px Nunito,Arial';ctx.fillText('Press R to try again!',W/2,H/2+50);
-  ctx.fillStyle='#ffffff33';ctx.font='10px Nunito,Arial';ctx.fillText('📚 Flynn Hurley · Tamborine Mountain State School · Class 4J',W/2,H/2+80);
+  ctx.fillStyle='rgba(0,0,18,0.92)'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#ff4444'; ctx.font='bold 44px Fredoka One,Arial'; ctx.textAlign='center';
+  ctx.fillText('GAME OVER',W/2,H/2-80);
+  ctx.fillStyle='#FFD700'; ctx.font='17px Fredoka One,Arial';
+  ctx.fillText(getZone(PL.x).name,W/2,H/2-42);
+  ctx.fillText('💎 '+diamonds+' diamonds  ·  '+comboMax+'× best combo',W/2,H/2-18);
+  const hs=loadHS();
+  if(hs.diamonds){
+    ctx.fillStyle='rgba(255,215,0,0.08)';
+    if(ctx.roundRect) ctx.roundRect(W/2-110,H/2+4,220,44,8); else ctx.rect(W/2-110,H/2+4,220,44);
+    ctx.fill();
+    ctx.fillStyle='#FFD700'; ctx.font='bold 10px Nunito,Arial';
+    ctx.fillText('🏆 PERSONAL BEST',W/2,H/2+19);
+    ctx.fillStyle='#aabcff'; ctx.font='11px Nunito,Arial';
+    ctx.fillText('Level '+(hs.level||1)+' · 💎 '+(hs.diamonds||0)+' · Combo '+(hs.combo||0)+'×',W/2,H/2+37);
+  }
+  ctx.fillStyle='#88aaff'; ctx.font='14px Nunito,Arial';
+  ctx.fillText('Press R or tap to try again!',W/2,H/2+65);
+  ctx.fillStyle='#ffffff33'; ctx.font='10px Nunito,Arial';
+  ctx.fillText('📚 Flynn Hurley · Tamborine Mountain State School · Class 4J',W/2,H/2+92);
 }
+canvas.addEventListener('click',()=>{ if(state==='gameover') restartGame(); });
 
 // ── MAIN LOOP ─────────────────────────────────────────────────
 let running=false;
@@ -1822,4 +1948,43 @@ document.getElementById('startBtn').onclick=()=>{
   sections.forEach(s=>{ ctx.beginPath(); ctx.moveTo(bkx-s.w/2,s.y); ctx.lineTo(bkx+s.w/2,s.y); ctx.stroke(); });
   ctx.globalAlpha=1;
   requestAnimationFrame(titleBG);
+})();
+
+// ── TOUCH CONTROLS ────────────────────────────────────────────
+(function setupTouch(){
+  // Mapping: button id → key code(s) to simulate
+  const BTN_MAP = {
+    tcLeft:   'ArrowLeft',
+    tcRight:  'ArrowRight',
+    tcJump:   'ArrowUp',
+    tcAttack: 'Space',
+    tcDash:   'KeyX',
+    tcPause:  'KeyP',
+  };
+
+  function pressKey(code){
+    if(!keys[code]) justPressed[code]=true;
+    keys[code]=true;
+  }
+  function releaseKey(code){
+    keys[code]=false;
+    delete justPressed[code];
+  }
+
+  Object.entries(BTN_MAP).forEach(([id, code])=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    const down=e=>{ e.preventDefault(); pressKey(code); el.classList.add('tc-pressed'); };
+    const up  =e=>{ e.preventDefault(); releaseKey(code); el.classList.remove('tc-pressed'); };
+    el.addEventListener('touchstart', down, {passive:false});
+    el.addEventListener('touchend',   up,   {passive:false});
+    el.addEventListener('touchcancel',up,   {passive:false});
+    el.addEventListener('mousedown',  down);
+    el.addEventListener('mouseup',    up);
+    el.addEventListener('mouseleave', up);
+  });
+
+  // Sound toggle button
+  const soundEl=document.getElementById('soundBtn');
+  if(soundEl) soundEl.addEventListener('click',toggleSound);
 })();
