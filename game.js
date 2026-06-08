@@ -195,7 +195,7 @@ const PL={
   onGround:false, coyote:0, djAvail:true,
   wallSliding:false, wallDir:0, wallJumpCooldown:0,
   dashCooldown:0, dashing:false, dashTimer:0,
-  maxHp:5, hp:5, invincible:0, regenTimer:0,
+  maxHp:6, hp:6, invincible:0, regenTimer:0,
   attackTimer:0, attacking:false,
   skinIdx:0, weaponIdx:0,
   checkpointX:80, checkpointY:GROUND_Y-36,
@@ -232,8 +232,8 @@ function jp(c){ return !!justPressed[c]; }
 
 // ── LEVEL GENERATION ─────────────────────────────────────────
 // Guaranteed-reachable path: each platform within jump range of previous
-const MAX_V_GAP = 40;   // max upward step (vy=-8, g=0.3 → max height ≈107px)
-const MAX_H_GAP = 100;   // max horizontal gap between right edge and left edge of next platform
+const MAX_V_GAP = 32;   // max upward step — kept gentle so jumps stay comfortable
+const MAX_H_GAP = 82;    // max horizontal gap between right edge and left edge of next platform
 
 function generateLevel(lvl){
   platforms=[]; enemies=[]; collectibles=[]; doors=[];
@@ -328,7 +328,7 @@ function generateLevel(lvl){
 
   // ── SPIKES (zone 2+)
   platforms.filter(p=>p.type==='platform'&&p.zone>=2).forEach(p=>{
-    if(Math.random()<0.18){
+    if(Math.random()<0.11){
       hazards.push({x:p.x+8+Math.random()*(p.w-26), y:p.y-8, w:18, h:8, type:'spike'});
     }
   });
@@ -343,7 +343,7 @@ function generateLevel(lvl){
     ['captain','titan','phantom'],// zone 5
   ];
   platforms.filter(p=>p.type==='platform'&&p.floor>3).forEach(p=>{
-    if(Math.random()<0.50+lvl*0.05){
+    if(Math.random()<0.34+lvl*0.03){
       const pool=ENEMY_POOL[Math.min(p.zone,5)];
       const etype=pool[Math.floor(Math.random()*pool.length)];
       enemies.push(makeEnemy(etype,p.x,p.y,p.w,p.zone,lvl));
@@ -415,7 +415,7 @@ const EDEFS={
 };
 function makeEnemy(etype,px,py,pw,zoneId,lvl){
   const d=EDEFS[etype]||EDEFS.grunt;
-  const hp=Math.ceil(d.hpBase*(1+(lvl-1)*0.3+zoneId*0.15));
+  const hp=Math.ceil(d.hpBase*(1+(lvl-1)*0.2+zoneId*0.1));
   const spd=d.spdBase*(1+lvl*0.06)*(Math.random()<0.5?1:-1);
   return{x:px+8,y:py-d.h,w:d.w,h:d.h,hp,maxHp:hp,vx:spd,
     platX:px,platW:pw,platY:py,dead:false,deadTimer:0,isBoss:false,
@@ -729,7 +729,7 @@ function update(){
   // ── HAZARDS
   for(const hz of hazards){
     if(PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:hz.x,y:hz.y,w:hz.w,h:hz.h})){
-      PL.hp--; PL.invincible=80; PL.vy=-5;
+      PL.hp--; PL.invincible=100; PL.vy=-5;
       triggerShake(5); hitFlash=12; SFX.hit();
       spawnParts(PL.x+PL.w/2,PL.y,'#ff4400',8);
       if(PL.hp<=0){gameOver();return;}
@@ -765,7 +765,7 @@ function update(){
     en.y=en.flies ? en.platY-en.h+Math.sin(en.phase)*10 : en.platY-en.h;
     if(en.ranged){ en.shootTimer--; if(en.shootTimer<=0){ en.shootTimer=80+Math.floor(Math.random()*60); const dx=PL.x-en.x,dy=PL.y-en.y,dist=Math.sqrt(dx*dx+dy*dy)||1,spd=1.4+gameLevel*0.1; projectiles.push({x:en.x+en.w/2,y:en.y+en.h/2,vx:dx/dist*spd,vy:dy/dist*spd,life:120,fromBoss:en.isBoss,r:en.isBoss?5:4}); } }
     if(PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:en.x,y:en.y,w:en.w,h:en.h})){
-      PL.hp-=en.isBoss?2:1; PL.invincible=90; PL.vy=-5; en.attackAnim=15;
+      PL.hp-=en.isBoss?2:1; PL.invincible=110; PL.vy=-5; en.attackAnim=15;
       triggerShake(en.isBoss?8:5); hitFlash=14; SFX.hit();
       spawnParts(PL.x+PL.w/2,PL.y,'#ff4400',8);
       if(PL.hp<=0){gameOver();return;}
@@ -783,7 +783,7 @@ function update(){
     const p=projectiles[i]; p.x+=p.vx; p.y+=p.vy; p.life--;
     if(p.life<=0){projectiles.splice(i,1);continue;}
     if(PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:p.x-p.r,y:p.y-p.r,w:p.r*2,h:p.r*2})){
-      PL.hp-=p.fromBoss?2:1; PL.invincible=70;
+      PL.hp-=p.fromBoss?2:1; PL.invincible=90;
       triggerShake(4); hitFlash=10;
       spawnParts(p.x,p.y,'#ff6600',5); projectiles.splice(i,1);
       if(PL.hp<=0){gameOver();return;}
@@ -836,7 +836,13 @@ function update(){
   }
 
   // Fell too far
-  if(PL.y>GROUND_Y+200){ PL.x=PL.checkpointX; PL.y=PL.checkpointY; PL.vx=0; PL.vy=0; PL.hp=Math.max(1,PL.hp-1); PL.invincible=60; }
+  if(PL.y>GROUND_Y+200){
+    PL.x=PL.checkpointX; PL.y=PL.checkpointY; PL.vx=0; PL.vy=0; PL.hp=Math.max(1,PL.hp-1); PL.invincible=80;
+    // Snap the camera straight to the respawn point — without this the view stays where the
+    // player fell from and they appear "off screen" until the camera slowly catches up
+    cameraX=Math.max(0,Math.min(WORLD_W-W,PL.x-W*0.38));
+    cameraY=PL.y-H*0.52;
+  }
 
   updateProgress();
   for(const k in justPressed) delete justPressed[k];
