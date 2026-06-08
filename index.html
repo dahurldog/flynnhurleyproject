@@ -89,9 +89,15 @@ canvas{display:block;border:2px solid #FFD70066;border-top:none;}
   flex-direction:column;align-items:center;justify-content:center;z-index:10;}
 #shopOverlay.active{display:flex;}
 #shopBox{background:linear-gradient(160deg,#0d1530,#172045);border:2px solid #FFD700;
-  border-radius:12px;padding:18px 16px;width:92%;max-width:440px;}
+  border-radius:12px;padding:18px 16px;width:92%;max-width:440px;max-height:88vh;overflow-y:auto;}
 #shopBox h2{color:#FFD700;font-family:'Fredoka One',sans-serif;font-size:20px;text-align:center;margin-bottom:4px;}
 #shopBox p{color:#aabcff;font-size:12px;text-align:center;margin-bottom:12px;}
+.shop-sub{color:#FFD700;font-family:'Fredoka One',sans-serif;font-size:13px;margin:4px 0 7px;text-align:center;}
+.shop-actions{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;}
+.shop-link{background:#0c1430;color:#aabcff;border:1px solid #4466aa;border-radius:7px;
+  padding:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif;transition:all .15s;}
+.shop-link:hover:not(:disabled){border-color:#FFD700;color:#FFD700;}
+.shop-link:disabled{opacity:0.5;cursor:default;}
 .skin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:12px;}
 .skin-item{background:#080f28;border:2px solid #334;border-radius:9px;padding:11px 5px;
   cursor:pointer;transition:all .18s;text-align:center;}
@@ -218,7 +224,14 @@ canvas{touch-action:none;}
     <div id="shopBox">
       <h2>🛍️ Character Shop</h2>
       <p>💎 Diamonds: <strong id="shopDia" style="color:#FFD700">0</strong></p>
+      <h3 class="shop-sub">👤 Characters</h3>
       <div class="skin-grid" id="skinGrid"></div>
+      <h3 class="shop-sub">⚔️ Weapons</h3>
+      <div class="skin-grid" id="weaponGrid"></div>
+      <div class="shop-actions">
+        <button id="buyBundle" class="shop-link">🎁 Elemental Bundle (Fire+Ice+Air) — 💎150</button>
+        <button id="resetWeapon" class="shop-link">🔄 Use Level Weapon</button>
+      </div>
       <button id="closeShop">✕ Close Shop</button>
     </div>
   </div>

@@ -14,6 +14,17 @@ const GOAL_Y   = 180;
 let cameraX = 0, cameraY = 0;
 let state = 'title', diamonds = 0, gameLevel = 1;
 let selectedSkin = 0, ownedSkins = [0];
+let selectedWeapon = -1, ownedWeapons = []; // -1 = use the auto level-based weapon
+function applyWeaponSelection(){
+  PL.weaponIdx = selectedWeapon>=0 ? selectedWeapon : Math.min(gameLevel-1, weapons.length-1);
+}
+function equipBonusWeapon(sk){
+  if(!sk.bonusWeapon) return;
+  const wi=weapons.findIndex(w=>w.name===sk.bonusWeapon);
+  if(wi<0) return;
+  if(!ownedWeapons.includes(wi)) ownedWeapons.push(wi);
+  selectedWeapon=wi; applyWeaponSelection();
+}
 let zoneTimer = 0, factTimer = 0, buildingFlash = 0;
 let fireworks = [], fireworkTimer = 0;
 let currentFloor = 1, lastZoneId = -1;
@@ -148,6 +159,8 @@ const skins=[
   {name:"Desert Warrior",  head:'#f5c5a0',shirt:'#8B0000',legs:'#600000',price:120},
   {name:"Dubai Princess",  head:'#f5c5a0',shirt:'#cc3399',legs:'#992277',price:150},
   {name:"Gold Knight",     head:'#f5c5a0',shirt:'#aa8800',legs:'#886600',price:200},
+  {name:"Gun Runner",      head:'#caa07a',shirt:'#33363c',legs:'#1c1e22',price:160,bonusWeapon:"Mega Blaster"},
+  {name:"Burj Engineer",   head:'#f0c4a0',shirt:'#0077aa',legs:'#114466',price:160,bonusWeapon:"Engineer's Blade"},
 ];
 const weapons=[
   {name:"Bronze Sword",    dmg:1,color:'#cd7f32',len:28},
@@ -155,7 +168,20 @@ const weapons=[
   {name:"Desert Blade",    dmg:3,color:'#FFD700',len:34},
   {name:"Flaming Scimitar",dmg:4,color:'#ff6600',len:38},
   {name:"Diamond Sword",   dmg:5,color:'#00FFFF',len:42},
+  // ── Shop weapons (bought with diamonds — not tied to level progress) ──
+  {name:"Mega Blaster",     dmg:3,color:'#9dff33',len:48,price:120,icon:'🔫',
+   desc:"Gun Runner's overpowered blaster — flattens most foes in 3 hits!"},
+  {name:"Engineer's Blade", dmg:3,color:'#ffe066',len:36,price:120,icon:'⚔️',
+   desc:"The Burj Engineer's enchanted blade — flattens most foes in 3 hits!"},
+  {name:"Fire Sword",       dmg:3,color:'#ff5522',len:32,price:50,icon:'🔥',element:'fire',
+   desc:"Sets foes ablaze — extra burn damage over time!"},
+  {name:"Ice Sword",        dmg:2,color:'#77ddff',len:32,price:50,icon:'❄️',element:'ice',
+   desc:"Freezes foes solid in place for 5 seconds!"},
+  {name:"Air Sword",        dmg:2,color:'#ddffee',len:32,price:50,icon:'🌪️',element:'air',
+   desc:"Blasts foes high into the air for 2 seconds!"},
 ];
+const ELEMENT_BUNDLE = ["Fire Sword","Ice Sword","Air Sword"];
+const ELEMENT_BUNDLE_PRICE = 150;
 const foods=[
   {name:"Falafel",icon:"🧆",heal:1},{name:"Shawarma",icon:"🌯",heal:2},
   {name:"Dates",  icon:"🫐",heal:1},{name:"Hummus",  icon:"🥣",heal:1},
@@ -169,7 +195,7 @@ const PL={
   onGround:false, coyote:0, djAvail:true,
   wallSliding:false, wallDir:0, wallJumpCooldown:0,
   dashCooldown:0, dashing:false, dashTimer:0,
-  maxHp:5, hp:5, invincible:0,
+  maxHp:5, hp:5, invincible:0, regenTimer:0,
   attackTimer:0, attacking:false,
   skinIdx:0, weaponIdx:0,
   checkpointX:80, checkpointY:GROUND_Y-36,
@@ -244,24 +270,24 @@ function generateLevel(lvl){
     else if(i % 9 === 0) type = 'checkpoint';
     else {
       const r = Math.random();
-      if(r < 0.13) type = 'collapse';
+      if(r < 0.07) type = 'collapse';
       else if(r < 0.22) type = 'seesaw';
     }
     platforms.push({
       x:p.x, y:p.y, w:p.w, h:14, type, floor:i+1, zone:zone.id,
-      collapseTimer:0, collapseMax:55, collapsing:false, collapseVY:0, gone:false,
+      collapseTimer:0, collapseMax:95, collapsing:false, collapseVY:0, gone:false,
       tilt:0, tiltV:0, origX:p.x, origY:p.y,
     });
   });
 
   // Ground slab (left side starting area)
   platforms.unshift({x:0, y:GROUND_Y, w:500, h:20, type:'ground',
-    collapseTimer:0,collapseMax:55,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
+    collapseTimer:0,collapseMax:95,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
 
   // Goal platform at end
   const lastP = path[path.length-1];
   platforms.push({x:lastP.x+lastP.w+60, y:GOAL_Y+60, w:200, h:14, type:'goal',
-    collapseTimer:0,collapseMax:55,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
+    collapseTimer:0,collapseMax:95,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
 
   // ── EXTRA DETAIL PLATFORMS (off-path, for exploration)
   for(let i=0; i<path.length-1; i++){
@@ -272,7 +298,7 @@ function generateLevel(lvl){
       if(ey > GOAL_Y+20){
         platforms.push({x:ex, y:ey, w:50+Math.random()*60, h:12, type:'platform',
           floor:i+1, zone:getZone(ex).id,
-          collapseTimer:0,collapseMax:55,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
+          collapseTimer:0,collapseMax:95,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
       }
     }
   }
@@ -338,8 +364,8 @@ function generateLevel(lvl){
     for(let d=0; d<dc; d++)
       collectibles.push({x:p.x+10+d*22, y:p.y-20, w:14, h:14, type:'diamond',
         collected:false, bob:Math.random()*Math.PI*2});
-    // Food
-    if(Math.random()<0.22)
+    // Food (regular health pickups — kept frequent so practising never feels punishing)
+    if(Math.random()<0.34)
       collectibles.push({x:p.x+p.w/2-9, y:p.y-24, w:18, h:18, type:'food',
         food:foods[Math.floor(Math.random()*foods.length)], collected:false, bob:Math.random()*Math.PI*2});
     // Checkpoint orb
@@ -372,7 +398,7 @@ function generateLevel(lvl){
 
   cameraX=0; cameraY=GROUND_Y-H*0.6;
   PL.x=80; PL.y=GROUND_Y-36; PL.vx=0; PL.vy=0; PL.hp=PL.maxHp;
-  PL.onGround=false; PL.weaponIdx=Math.min(lvl-1,weapons.length-1);
+  PL.onGround=false; applyWeaponSelection();
   PL.checkpointX=80; PL.checkpointY=GROUND_Y-36;
   PL.djAvail=true; PL.dashing=false; PL.dashCooldown=0;
   PL.seesawPlatIdx=-1; PL.runMom=0;
@@ -422,14 +448,14 @@ function askQuestion(cb,forDoor){
       btn.className='math-btn '+(ok?'correct':'wrong');
       const fb=document.getElementById('mathFeedback');
       if(ok){
-        const praise=['⭐ Excellent! +15 💎','🌟 Brilliant! +15 💎','🎉 Super! +15 💎','✅ Well done! +15 💎'];
+        const praise=['⭐ Excellent! +15 💎 +1 ❤️','🌟 Brilliant! +15 💎 +1 ❤️','🎉 Super! +15 💎 +1 ❤️','✅ Well done! +15 💎 +1 ❤️'];
         fb.textContent=praise[idx%praise.length]; fb.style.color='#2e7d32';
-        diamonds+=15; buildingFlash=90; SFX.correct();
+        diamonds+=15; PL.hp=Math.min(PL.maxHp,PL.hp+1); PL.regenTimer=0; buildingFlash=90; SFX.correct();
         setTimeout(()=>{ closeMath(); if(cb) cb(true); },900);
       } else {
-        fb.textContent=`❌ Answer: ${q.a} — keep practising!`; fb.style.color='#c62828';
-        PL.hp=Math.max(0,PL.hp-1); SFX.wrong();
-        setTimeout(()=>{ closeMath(); if(cb) cb(false); if(PL.hp<=0) gameOver(); },1800);
+        fb.textContent=`📖 Answer: ${q.a} — no harm done, you'll get the next one!`; fb.style.color='#c62828';
+        SFX.wrong();
+        setTimeout(()=>{ closeMath(); if(cb) cb(false); },1800);
       }
     };
     ad.appendChild(btn);
@@ -472,15 +498,51 @@ function openShop(){
     div.className='skin-item'+(owned?' owned':'')+(eq?' equipped':'');
     div.innerHTML=`<div class="skin-icon">👤</div><div class="skin-name">${sk.name}</div><div class="skin-price">${owned?(eq?'✅ On':'✅ Own'):'💎'+sk.price}</div>`;
     div.onclick=()=>{
-      if(owned){selectedSkin=i;PL.skinIdx=i;openShop();}
-      else if(diamonds>=sk.price){diamonds-=sk.price;ownedSkins.push(i);selectedSkin=i;PL.skinIdx=i;openShop();}
+      if(owned){selectedSkin=i;PL.skinIdx=i;equipBonusWeapon(sk);openShop();}
+      else if(diamonds>=sk.price){diamonds-=sk.price;ownedSkins.push(i);selectedSkin=i;PL.skinIdx=i;equipBonusWeapon(sk);openShop();}
     };
     grid.appendChild(div);
   });
+
+  // ── Weapons (only the shop-purchasable ones — level weapons stay automatic)
+  const wgrid=document.getElementById('weaponGrid'); wgrid.innerHTML='';
+  weapons.forEach((w,i)=>{
+    if(!w.price) return;
+    const owned=ownedWeapons.includes(i),eq=selectedWeapon===i;
+    const div=document.createElement('div');
+    div.className='skin-item'+(owned?' owned':'')+(eq?' equipped':'');
+    div.title=w.desc||'';
+    div.innerHTML=`<div class="skin-icon">${w.icon||'⚔️'}</div><div class="skin-name">${w.name}</div><div class="skin-price">${owned?(eq?'✅ On':'✅ Own'):'💎'+w.price}</div>`;
+    div.onclick=()=>{
+      if(owned){selectedWeapon=i;applyWeaponSelection();openShop();}
+      else if(diamonds>=w.price){diamonds-=w.price;ownedWeapons.push(i);selectedWeapon=i;applyWeaponSelection();openShop();}
+    };
+    wgrid.appendChild(div);
+  });
+
+  const bundleIdxs=ELEMENT_BUNDLE.map(n=>weapons.findIndex(w=>w.name===n));
+  const bundleOwned=bundleIdxs.every(i=>ownedWeapons.includes(i));
+  const bundleBtn=document.getElementById('buyBundle');
+  bundleBtn.textContent=bundleOwned?'✅ Elemental Bundle Owned (Fire+Ice+Air)':`🎁 Elemental Bundle (Fire+Ice+Air) — 💎${ELEMENT_BUNDLE_PRICE}`;
+  bundleBtn.disabled=bundleOwned;
+
   document.getElementById('shopOverlay').classList.add('active');
 }
 document.getElementById('closeShop').onclick=()=>{
   document.getElementById('shopOverlay').classList.remove('active'); state='playing';
+};
+document.getElementById('buyBundle').onclick=()=>{
+  const bundleIdxs=ELEMENT_BUNDLE.map(n=>weapons.findIndex(w=>w.name===n));
+  if(bundleIdxs.every(i=>ownedWeapons.includes(i))) return;
+  if(diamonds>=ELEMENT_BUNDLE_PRICE){
+    diamonds-=ELEMENT_BUNDLE_PRICE;
+    bundleIdxs.forEach(i=>{ if(!ownedWeapons.includes(i)) ownedWeapons.push(i); });
+    selectedWeapon=bundleIdxs[0]; applyWeaponSelection();
+    openShop();
+  }
+};
+document.getElementById('resetWeapon').onclick=()=>{
+  selectedWeapon=-1; applyWeaponSelection(); openShop();
 };
 
 // ── HUD HELPERS ───────────────────────────────────────────────
@@ -678,6 +740,24 @@ function update(){
   for(const en of enemies){
     if(en.dead){en.deadTimer++;continue;}
     en.animTick++; en.phase+=0.05;
+    // Fire Sword burn — ticks extra damage over time, on top of normal behaviour
+    if(en.burnTimer>0){
+      en.burnTimer--; en.burnTick=(en.burnTick||0)-1;
+      if(en.burnTick<=0){
+        en.burnTick=24; en.hp-=1;
+        spawnParts(en.x+en.w/2,en.y+4,'#ff6600cc',4,2);
+        if(en.hp<=0&&!en.dead){
+          en.dead=true; triggerShake(2);
+          diamonds+=en.isBoss?40+gameLevel*10:5+gameLevel*2;
+          spawnParts(en.x+en.w/2,en.y+en.h/2,'#FFD700aa',20,6); SFX.kill();
+          continue;
+        }
+      }
+    }
+    // Air Sword — lifted off the ground, harmless and helpless while airborne
+    if(en.windLift>0){ en.windLift--; en.y-=1.5; spawnParts(en.x+en.w/2,en.y+en.h,'#cdf3ffaa',1,1); continue; }
+    // Ice Sword — frozen solid, can't move or attack
+    if(en.frozen>0){ en.frozen--; continue; }
     if(en.stunned>0){en.stunned--;continue;}
     en.x+=en.vx;
     if(en.facing!==Math.sign(en.vx)&&Math.abs(en.vx)>0.1) en.facing=Math.sign(en.vx);
@@ -692,7 +772,11 @@ function update(){
     }
     if(en.attackAnim>0) en.attackAnim--;
   }
-  if(PL.invincible>0) PL.invincible--;
+  if(PL.invincible>0){ PL.invincible--; PL.regenTimer=0; }
+  else if(PL.hp<PL.maxHp){
+    PL.regenTimer++;
+    if(PL.regenTimer>=480){ PL.regenTimer=0; PL.hp++; spawnParts(PL.x+PL.w/2,PL.y+PL.h/2,'#00ff88aa',6,3); showFact('💚 Resting up: +1 HP'); }
+  } else PL.regenTimer=0;
 
   // ── PROJECTILES
   for(let i=projectiles.length-1;i>=0;i--){
@@ -765,6 +849,9 @@ function doAttack(){
     if(en.dead) return;
     if(overlap(ab,{x:en.x,y:en.y,w:en.w,h:en.h})){
       en.hp-=wep.dmg; en.stunned=en.isBoss?10:18;
+      if(wep.element==='fire'){ en.burnTimer=180; en.burnTick=Math.min(en.burnTick||24,24); spawnParts(en.x+en.w/2,en.y+en.h/2,'#ff5500',6,3); }
+      else if(wep.element==='ice'){ en.frozen=300; spawnParts(en.x+en.w/2,en.y+en.h/2,'#aaeeff',6,3); }
+      else if(wep.element==='air'){ en.windLift=120; spawnParts(en.x+en.w/2,en.y+en.h/2,'#eaffff',6,3); }
       combo++; comboTimer=90; if(combo>comboMax) comboMax=combo;
       spawnParts(en.x+en.w/2,en.y+en.h/2,'#ff8800aa',8);
       if(en.hp<=0){ en.dead=true; triggerShake(en.isBoss?6:2); diamonds+=en.isBoss?40+gameLevel*10:5+gameLevel*2; spawnParts(en.x+en.w/2,en.y+en.h/2,'#FFD700aa',20,6); SFX.kill(); }
@@ -782,7 +869,12 @@ function levelComplete(){
   else if(gameLevel===2 && !abilities.wallJump) unlockAbility('wallJump','🧗 Wall Jump!','Slide against a wall, then tap JUMP to launch off it!');
   else if(gameLevel===3 && !abilities.dash) unlockAbility('dash','💨 Dash!','Tap DASH to burst forward at speed — great for gaps!');
   saveHS();
-  setTimeout(()=>{ gameLevel++; generateLevel(gameLevel); PL.maxHp=Math.min(9,PL.maxHp+1); PL.hp=PL.maxHp; state='playing'; showFact('🏆 Level '+gameLevel+'!'); },3200);
+  setTimeout(()=>{
+    gameLevel++; generateLevel(gameLevel); PL.maxHp=Math.min(9,PL.maxHp+1); PL.hp=PL.maxHp; state='playing';
+    showFact('🏆 Level '+gameLevel+'!');
+    // Pop the shop open at the start of each level — a natural break to spend diamonds on new gear
+    setTimeout(()=>{ if(state==='playing') openShop(); }, 1500);
+  },3200);
 }
 function gameOver(){ state='gameover'; saveHS(); }
 function restartGame(){ gameLevel=1; diamonds=0; abilities.doubleJump=false; abilities.wallJump=false; abilities.dash=false; lastZoneId=-1; generateLevel(1); state='playing'; bgMusic.play(); }
@@ -1314,6 +1406,9 @@ function drawPlatforms(){
       topCol=`rgb(${r},${g2},${b})`; frontCol=`rgb(${Math.round(r*0.45)},${Math.round(g2*0.4)},${Math.round(b*0.4)})`;
       edgeHigh=`rgba(255,80,20,${frac*0.85})`;
       ssx+= shakeX; // apply shake to all subsequent draws for this platform
+      // Always-visible warning so players learn to spot unstable ground before stepping on it
+      ctx.fillStyle='rgba(255,205,40,0.9)'; ctx.font='10px Arial'; ctx.textAlign='center';
+      ctx.fillText('⚠️ shaky',ssx+p.w/2,ssy-4);
     } else {
       // Normal platform — zone-themed aluminium/concrete ledge
       const zh=zoneHues[Math.min(p.zone||0,5)];
@@ -1514,6 +1609,21 @@ function drawEnemies(){
     if(en.isBoss){ ctx.shadowColor='#ff2200'; ctx.shadowBlur=18; }
     drawEnemyShape(en,esx,esyBot);
     ctx.shadowBlur=0;
+    // Elemental status overlays
+    if(en.frozen>0){
+      ctx.fillStyle='rgba(140,225,255,0.45)'; ctx.fillRect(sx(en.x),esyTop,en.w,en.h);
+      ctx.strokeStyle='rgba(220,250,255,0.8)'; ctx.lineWidth=1; ctx.strokeRect(sx(en.x)+0.5,esyTop+0.5,en.w-1,en.h-1);
+      ctx.font='10px Arial'; ctx.textAlign='center'; ctx.fillText('❄️',esx,esyTop-2);
+    }
+    if(en.burnTimer>0){
+      ctx.fillStyle=`rgba(255,${110+Math.round(Math.sin(Date.now()/70)*50)},0,0.30)`;
+      ctx.fillRect(sx(en.x),esyTop,en.w,en.h);
+      ctx.font='10px Arial'; ctx.textAlign='center'; ctx.fillText('🔥',esx,esyTop-2);
+    }
+    if(en.windLift>0){
+      ctx.fillStyle='rgba(220,255,255,0.22)'; ctx.fillRect(sx(en.x),esyTop,en.w,en.h);
+      ctx.font='10px Arial'; ctx.textAlign='center'; ctx.fillText('🌪️',esx,esyTop-2);
+    }
     if(en.isBoss){
       const bw=Math.min(200,W-40), bx=esx-bw/2;
       ctx.fillStyle='#1a0000'; ctx.fillRect(bx,esyTop-22,bw,10);
