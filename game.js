@@ -9,7 +9,7 @@ const H = canvas.height;  // 600
 
 const WORLD_W  = 1920;
 const GROUND_Y = 1380;
-const GOAL_Y   = 180;
+const GOAL_Y   = -7620;   // ~9000px climb (≈10x the old ~1200px) — top of the tower, the finish line
 
 let cameraX = 0, cameraY = 0;
 let state = 'title', diamonds = 0, gameLevel = 1;
@@ -78,15 +78,19 @@ const keyInv = {bronze:0, silver:0, gold:0};
 const KEY_COLORS = {bronze:'#cd7f32', silver:'#c0c0c0', gold:'#FFD700'};
 
 // ── ZONES (based on x progress) ──────────────────────────────
+// Zones now mark how HIGH you've climbed (pStart = fraction of the tower climbed, 0=lobby, 1=spire)
 const ZONES = [
-  {id:0, name:'🏜️ Ground Lobby',      xStart:0,    desc:'Floors 1–7 · Welcome to the Burj Khalifa!', sky:'#060a14'},
-  {id:1, name:'🏨 Armani Hotel',       xStart:320,  desc:'Floors 8–37 · Luxury hotel & residences',   sky:'#07091a'},
-  {id:2, name:'🏠 Residential',        xStart:640,  desc:'Floors 38–80 · 900 luxury apartments',      sky:'#050818'},
-  {id:3, name:'💼 Corporate Offices',  xStart:960,  desc:'Floors 81–124 · Business hub',              sky:'#040616'},
-  {id:4, name:'🔭 At The Top',         xStart:1280, desc:'Floors 125–148 · Observation deck',         sky:'#030510'},
-  {id:5, name:'⚡ The Spire',          xStart:1600, desc:'Floors 149–163 · Steel spire — almost there!', sky:'#020308'},
+  {id:0, name:'🏜️ Ground Lobby',      pStart:0,    desc:'Floors 1–7 · Welcome to the Burj Khalifa!', sky:'#060a14'},
+  {id:1, name:'🏨 Armani Hotel',       pStart:0.06, desc:'Floors 8–37 · Luxury hotel & residences',   sky:'#07091a'},
+  {id:2, name:'🏠 Residential',        pStart:0.28, desc:'Floors 38–80 · 900 luxury apartments',      sky:'#050818'},
+  {id:3, name:'💼 Corporate Offices',  pStart:0.55, desc:'Floors 81–124 · Business hub',              sky:'#040616'},
+  {id:4, name:'🔭 At The Top',         pStart:0.82, desc:'Floors 125–148 · Observation deck',         sky:'#030510'},
+  {id:5, name:'⚡ The Spire',          pStart:0.94, desc:'Floors 149–163 · Steel spire — almost there!', sky:'#020308'},
 ];
-function getZone(x){ let z=ZONES[0]; for(const zz of ZONES) if(x>=zz.xStart) z=zz; return z; }
+function getZone(y){
+  const p = Math.max(0, Math.min(1, (GROUND_Y - y) / (GROUND_Y - GOAL_Y)));
+  let z=ZONES[0]; for(const zz of ZONES) if(p>=zz.pStart) z=zz; return z;
+}
 
 // ── QUESTIONS ────────────────────────────────────────────────
 const QUESTIONS = [
@@ -206,7 +210,7 @@ const PL={
 const abilities = {doubleJump:false, wallJump:false, dash:false};
 
 // ── WORLD ────────────────────────────────────────────────────
-let platforms=[], enemies=[], collectibles=[], doors=[], mathTriggers=[];
+let platforms=[], enemies=[], collectibles=[], doors=[], mathTriggers=[], shopTriggers=[];
 let hazards=[], particles=[], projectiles=[], visitedZones=new Set();
 let mapOpen=false;
 
@@ -237,33 +241,34 @@ const MAX_H_GAP = 82;    // max horizontal gap between right edge and left edge 
 
 function generateLevel(lvl){
   platforms=[]; enemies=[]; collectibles=[]; doors=[];
-  mathTriggers=[]; hazards=[]; particles=[]; projectiles=[];
+  mathTriggers=[]; shopTriggers=[]; hazards=[]; particles=[]; projectiles=[];
   visitedZones.clear(); fireworks=[]; fireworkTimer=0; buildingFlash=0;
   keyInv.bronze=0; keyInv.silver=0; keyInv.gold=0;
   switches=[]; dashTrail=[]; screenShake=0; hitFlash=0; combo=0; comboTimer=0;
 
-  // ── MAIN PATH (guaranteed reachable)
+  // ── MAIN PATH (guaranteed reachable) — a long upward CLIMB through the
+  // tower: each platform sits a bit higher than the last and weaves left
+  // and right across the building's width, like climbing up Burj Khalifa
   const path = [];
   let cx = 80, cy = GROUND_Y, pw = 160;
   path.push({x:cx, y:cy, w:pw}); // starting ledge
 
-  while(cx < WORLD_W - 300){
-    const prevRight = cx + pw;
+  while(cy > GOAL_Y + 80){
+    const climbed = GROUND_Y - cy;
+    const isEarly = climbed < 500; // keep the first stretch gentle so it's learnable
     pw = 80 + Math.random()*110;
-    const isEarly = cx < 520; // zone 0 — keep gentle so first area is learnable
-    const maxH = isEarly ? 55 : MAX_H_GAP;
-    const hgap = 20 + Math.random()*(maxH - 20);
-    cx = prevRight + hgap;
-    const dy = isEarly
-      ? -4 + (Math.random()-0.5)*18  // gentle rise: max ~13px up per step
-      : -10 + (Math.random()-0.5)*MAX_V_GAP;
-    cy = Math.max(GOAL_Y+40, Math.min(GROUND_Y-20, cy + dy));
+    // Rise — kept well within jump height so every step stays reachable
+    const vgap = isEarly ? (20 + Math.random()*16) : (26 + Math.random()*(MAX_V_GAP-4));
+    cy = Math.max(GOAL_Y+40, cy - vgap);
+    // Weave left/right across the tower's width as we climb
+    const maxShift = isEarly ? 60 : MAX_H_GAP;
+    cx = Math.max(40, Math.min(WORLD_W-pw-40, cx + (Math.random()-0.5)*2*maxShift));
     path.push({x:cx, y:cy, w:pw});
   }
 
   // Build platforms from path
   path.forEach((p, i) => {
-    const zone = getZone(p.x);
+    const zone = getZone(p.y);
     const isBoss = (i > 0 && i % 12 === 0);
     let type = 'platform';
     if(isBoss) type = 'boss';
@@ -284,9 +289,11 @@ function generateLevel(lvl){
   platforms.unshift({x:0, y:GROUND_Y, w:500, h:20, type:'ground',
     collapseTimer:0,collapseMax:95,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
 
-  // Goal platform at end
+  // Goal platform — sits at the very top of the tower, just above the last
+  // climbed ledge so the final jump leads straight onto it
   const lastP = path[path.length-1];
-  platforms.push({x:lastP.x+lastP.w+60, y:GOAL_Y+60, w:200, h:14, type:'goal',
+  const goalX = Math.max(40, Math.min(WORLD_W-260, lastP.x + lastP.w/2 - 100));
+  platforms.push({x:goalX, y:GOAL_Y, w:200, h:14, type:'goal',
     collapseTimer:0,collapseMax:95,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
 
   // ── EXTRA DETAIL PLATFORMS (off-path, for exploration)
@@ -297,7 +304,7 @@ function generateLevel(lvl){
       const ey = p.y - 20 - Math.random()*40;
       if(ey > GOAL_Y+20){
         platforms.push({x:ex, y:ey, w:50+Math.random()*60, h:12, type:'platform',
-          floor:i+1, zone:getZone(ex).id,
+          floor:i+1, zone:getZone(ey).id,
           collapseTimer:0,collapseMax:95,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
       }
     }
@@ -387,12 +394,24 @@ function generateLevel(lvl){
 
   // Doors removed — keys now give bonus diamonds instead
 
-  // ── MATH TRIGGERS (every ~320px)
-  for(let mx=280; mx<WORLD_W-200; mx+=320){
-    const nearPlats=platforms.filter(p=>Math.abs(p.x-mx)<150&&p.type==='platform');
+  // ── MATH TRIGGERS (placed every ~450px of height climbed, so they show up
+  // steadily as you ascend rather than clustering near the bottom)
+  for(let my=GROUND_Y-260; my>GOAL_Y+200; my-=450){
+    const nearPlats=platforms.filter(p=>p.type==='platform'&&Math.abs(p.y-my)<140);
     if(nearPlats.length>0){
-      const p=nearPlats[0];
+      const p=nearPlats[Math.floor(Math.random()*nearPlats.length)];
       mathTriggers.push({x:p.x+p.w/2-18, y:p.y-50, w:36, h:36, triggered:false});
+    }
+  }
+
+  // ── SHOP KIOSKS (walk into one any time to spend diamonds on skins & weapons —
+  // placed every ~1500px climbed so the shop shows up often during the run, not
+  // just between levels)
+  for(let my=GROUND_Y-700; my>GOAL_Y+260; my-=1500){
+    const nearPlats=platforms.filter(p=>p.type==='platform'&&Math.abs(p.y-my)<200);
+    if(nearPlats.length>0){
+      const p=nearPlats[Math.floor(Math.random()*nearPlats.length)];
+      shopTriggers.push({x:p.x+p.w/2-16, y:p.y-52, w:32, h:36, used:false});
     }
   }
 
@@ -435,7 +454,7 @@ function askQuestion(cb,forDoor){
   questionUsed.push(idx);
   const q=QUESTIONS[idx];
   state='math';
-  document.getElementById('mathFloorTag').textContent=`Zone ${getZone(PL.x).id+1} · ${q.cat==='trivia'?'🏙️ Trivia':'📐 Maths'} Year ${q.y}`;
+  document.getElementById('mathFloorTag').textContent=`Zone ${getZone(PL.y).id+1} · ${q.cat==='trivia'?'🏙️ Trivia':'📐 Maths'} Year ${q.y}`;
   document.getElementById('mathFact').textContent='🏗️ '+q.fact;
   document.getElementById('mathQuestion').textContent=q.q;
   document.getElementById('mathFeedback').textContent='';
@@ -823,6 +842,13 @@ function update(){
     if(overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:mt.x,y:mt.y,w:mt.w,h:mt.h})){ mt.triggered=true; askQuestion(()=>{},false); }
   }
 
+  // ── SHOP KIOSKS (re-usable — walk away and back to shop again later)
+  for(const st of shopTriggers){
+    const touching=overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:st.x,y:st.y,w:st.w,h:st.h});
+    if(st.used){ if(!touching) st.used=false; continue; }
+    if(touching){ st.used=true; openShop(); }
+  }
+
   // ── SWITCHES (pressure plates)
   for(const swObj of switches){
     if(swObj.flash>0) swObj.flash--;
@@ -901,6 +927,7 @@ function draw(){
   drawSwitches();
   drawDoors();
   drawMathTriggers();
+  drawShopTriggers();
   drawCollectibles();
   drawDashTrail();
   drawProjectiles();
@@ -1528,6 +1555,29 @@ function drawMathTriggers(){
   }
 }
 
+// ── SHOP KIOSKS ──────────────────────────────────────────────
+function drawShopTriggers(){
+  const t=Date.now()/500;
+  for(const st of shopTriggers){
+    const sssy=sw(st.y), sssx=sx(st.x);
+    if(sssy>H||sssy+st.h<0||sssx>W) continue;
+    const bob=Math.sin(t)*3;
+    ctx.save(); ctx.translate(sssx+st.w/2, sssy+st.h/2+bob);
+    ctx.shadowColor='#33ddaa'; ctx.shadowBlur=14+Math.sin(t*2)*5;
+    // Kiosk bag
+    ctx.fillStyle='#21c98c';
+    ctx.beginPath(); ctx.moveTo(-13,-6); ctx.lineTo(13,-6); ctx.lineTo(11,16); ctx.lineTo(-11,16); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='#0c6a48'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(0,-9,7,Math.PI,0); ctx.stroke();
+    ctx.shadowBlur=0;
+    ctx.fillStyle='#fff'; ctx.font='bold 12px Fredoka One,Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('💎',0,5);
+    ctx.restore();
+    ctx.fillStyle='#9dffe0'; ctx.font='bold 9px Nunito,Arial'; ctx.textAlign='center';
+    ctx.fillText('SHOP',sssx+st.w/2,sssy-6);
+  }
+}
+
 // ── COLLECTIBLES ─────────────────────────────────────────────
 function drawCollectibles(){
   const t=Date.now()/300;
@@ -1878,7 +1928,7 @@ function drawHUD(){
   ctx.strokeStyle='#FFD700';ctx.lineWidth=1.5;ctx.beginPath();if(ctx.roundRect)ctx.roundRect(bx,by,bw,bh,4);else ctx.rect(bx,by,bw,bh);ctx.stroke();
   ctx.fillStyle='#fff';ctx.font='bold 9px Nunito,Arial';ctx.textAlign='center';ctx.fillText('❤️ '+PL.hp+'/'+PL.maxHp,bx+bw/2,by+12);
 
-  const pills=[{t:'⚔️ '+weapons[PL.weaponIdx].name,x:8,y:8},{t:'🏢 '+getZone(PL.x).name.split(' ').slice(1).join(' '),x:8,y:26},{t:'💎 '+diamonds,x:8,y:44}];
+  const pills=[{t:'⚔️ '+weapons[PL.weaponIdx].name,x:8,y:8},{t:'🏢 '+getZone(PL.y).name.split(' ').slice(1).join(' '),x:8,y:26},{t:'💎 '+diamonds,x:8,y:44}];
   pills.forEach(p=>{
     ctx.fillStyle='rgba(0,0,0,0.55)';ctx.beginPath();const tw=ctx.measureText(p.t).width;if(ctx.roundRect)ctx.roundRect(p.x-3,p.y-1,tw+10,16,8);else ctx.rect(p.x-3,p.y-1,tw+10,16);ctx.fill();
     ctx.fillStyle='#fff';ctx.font='bold 11px Nunito,Arial';ctx.textAlign='left';ctx.fillText(p.t,p.x+2,p.y+11);
@@ -1965,7 +2015,7 @@ function drawGameOver(){
   ctx.fillStyle='#ff4444'; ctx.font='bold 44px Fredoka One,Arial'; ctx.textAlign='center';
   ctx.fillText('GAME OVER',W/2,H/2-80);
   ctx.fillStyle='#FFD700'; ctx.font='17px Fredoka One,Arial';
-  ctx.fillText(getZone(PL.x).name,W/2,H/2-42);
+  ctx.fillText(getZone(PL.y).name,W/2,H/2-42);
   ctx.fillText('💎 '+diamonds+' diamonds  ·  '+comboMax+'× best combo',W/2,H/2-18);
   const hs=loadHS();
   if(hs.diamonds){
