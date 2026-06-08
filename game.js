@@ -760,8 +760,8 @@ const Z_PAL=[
 
 // World-space window layout
 const WIN_PW  = 160; // world px per repeat unit
-const WIN_GW  = 102; // glass panel width (world px)
-const COL_W   = WIN_PW - WIN_GW; // 58px structural column
+const COL_W   = 10;  // thin glass mullion (was a thick 58px "wall" — slimmed so it reads as curtain-wall framing, not an obstacle)
+const WIN_GW  = WIN_PW - COL_W; // glass panel width (world px)
 const WIN_TOP_W = 90;
 const WIN_BOT_W = GROUND_Y - 16;
 
@@ -819,7 +819,7 @@ function drawInterior(){
     // Gold accent strip at top of column (lobby gold trim)
     if(zid===0){
       ctx.fillStyle='rgba(200,168,72,0.22)';
-      ctx.fillRect(colSX+6, sw(WIN_TOP_W)-4, COL_W-12, 3);
+      ctx.fillRect(colSX+1, sw(WIN_TOP_W)-4, Math.max(2,COL_W-2), 3);
     }
 
     // ── WINDOW GLASS PANEL
