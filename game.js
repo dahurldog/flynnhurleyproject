@@ -159,7 +159,7 @@ const skins=[
   {name:"Desert Warrior",  head:'#f5c5a0',shirt:'#8B0000',legs:'#600000',price:120},
   {name:"Dubai Princess",  head:'#f5c5a0',shirt:'#cc3399',legs:'#992277',price:150},
   {name:"Gold Knight",     head:'#f5c5a0',shirt:'#aa8800',legs:'#886600',price:200},
-  {name:"Gun Runner",      head:'#caa07a',shirt:'#33363c',legs:'#1c1e22',price:160,bonusWeapon:"Mega Blaster"},
+  {name:"Gun Runner",      head:'#caa07a',shirt:'#7a5230',legs:'#4a3318',price:160,bonusWeapon:"Mega Blaster"},
   {name:"Burj Engineer",   head:'#f0c4a0',shirt:'#0077aa',legs:'#114466',price:160,bonusWeapon:"Engineer's Blade"},
 ];
 const weapons=[
@@ -195,7 +195,7 @@ const PL={
   onGround:false, coyote:0, djAvail:true,
   wallSliding:false, wallDir:0, wallJumpCooldown:0,
   dashCooldown:0, dashing:false, dashTimer:0,
-  maxHp:6, hp:6, invincible:0, regenTimer:0,
+  maxHp:6, hp:6, invincible:0, regenTimer:0, hurtTimer:0,
   attackTimer:0, attacking:false,
   skinIdx:0, weaponIdx:0,
   checkpointX:80, checkpointY:GROUND_Y-36,
@@ -593,6 +593,7 @@ function update(){
 
   PL.runTick++; if(PL.runTick>=PL.RUN_SPEED){PL.runTick=0;PL.runFrame=(PL.runFrame+1)%6;}
   if(PL.landTick>0) PL.landTick--;
+  if(PL.hurtTimer>0) PL.hurtTimer--;
   if(PL.dashCooldown>0) PL.dashCooldown--;
   if(PL.wallJumpCooldown>0) PL.wallJumpCooldown--;
   if(factTimer>0){factTimer--; if(factTimer===0) document.getElementById('factPopup').classList.remove('show');}
@@ -721,15 +722,21 @@ function update(){
     setTimeout(()=>{PL.attacking=false;},220);
   }
 
-  // ── CAMERA (follows both X and Y)
-  cameraX+=(PL.x-W*0.38-cameraX)*0.09;
+  // ── CAMERA (follows both X and Y — snaps instantly on big jumps like
+  // respawns/teleports so the player is never left invisible off-screen)
+  const camTX=PL.x-W*0.38, camTY=PL.y-H*0.52;
+  if(Math.abs(camTX-cameraX)>W*0.7 || Math.abs(camTY-cameraY)>H*0.7){
+    cameraX=camTX; cameraY=camTY;
+  } else {
+    cameraX+=(camTX-cameraX)*0.09;
+    cameraY+=(camTY-cameraY)*0.07;
+  }
   cameraX=Math.max(0,Math.min(WORLD_W-W,cameraX));
-  cameraY+=(PL.y-H*0.52-cameraY)*0.07;
 
   // ── HAZARDS
   for(const hz of hazards){
     if(PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:hz.x,y:hz.y,w:hz.w,h:hz.h})){
-      PL.hp--; PL.invincible=100; PL.vy=-5;
+      PL.hp--; PL.invincible=100; PL.hurtTimer=16; PL.vy=-5;
       triggerShake(5); hitFlash=12; SFX.hit();
       spawnParts(PL.x+PL.w/2,PL.y,'#ff4400',8);
       if(PL.hp<=0){gameOver();return;}
@@ -765,7 +772,7 @@ function update(){
     en.y=en.flies ? en.platY-en.h+Math.sin(en.phase)*10 : en.platY-en.h;
     if(en.ranged){ en.shootTimer--; if(en.shootTimer<=0){ en.shootTimer=80+Math.floor(Math.random()*60); const dx=PL.x-en.x,dy=PL.y-en.y,dist=Math.sqrt(dx*dx+dy*dy)||1,spd=1.4+gameLevel*0.1; projectiles.push({x:en.x+en.w/2,y:en.y+en.h/2,vx:dx/dist*spd,vy:dy/dist*spd,life:120,fromBoss:en.isBoss,r:en.isBoss?5:4}); } }
     if(PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:en.x,y:en.y,w:en.w,h:en.h})){
-      PL.hp-=en.isBoss?2:1; PL.invincible=110; PL.vy=-5; en.attackAnim=15;
+      PL.hp-=en.isBoss?2:1; PL.invincible=110; PL.hurtTimer=16; PL.vy=-5; en.attackAnim=15;
       triggerShake(en.isBoss?8:5); hitFlash=14; SFX.hit();
       spawnParts(PL.x+PL.w/2,PL.y,'#ff4400',8);
       if(PL.hp<=0){gameOver();return;}
@@ -783,7 +790,7 @@ function update(){
     const p=projectiles[i]; p.x+=p.vx; p.y+=p.vy; p.life--;
     if(p.life<=0){projectiles.splice(i,1);continue;}
     if(PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:p.x-p.r,y:p.y-p.r,w:p.r*2,h:p.r*2})){
-      PL.hp-=p.fromBoss?2:1; PL.invincible=90;
+      PL.hp-=p.fromBoss?2:1; PL.invincible=90; PL.hurtTimer=16;
       triggerShake(4); hitFlash=10;
       spawnParts(p.x,p.y,'#ff6600',5); projectiles.splice(i,1);
       if(PL.hp<=0){gameOver();return;}
@@ -837,11 +844,7 @@ function update(){
 
   // Fell too far
   if(PL.y>GROUND_Y+200){
-    PL.x=PL.checkpointX; PL.y=PL.checkpointY; PL.vx=0; PL.vy=0; PL.hp=Math.max(1,PL.hp-1); PL.invincible=80;
-    // Snap the camera straight to the respawn point — without this the view stays where the
-    // player fell from and they appear "off screen" until the camera slowly catches up
-    cameraX=Math.max(0,Math.min(WORLD_W-W,PL.x-W*0.38));
-    cameraY=PL.y-H*0.52;
+    PL.x=PL.checkpointX; PL.y=PL.checkpointY; PL.vx=0; PL.vy=0; PL.hp=Math.max(1,PL.hp-1); PL.invincible=80; PL.hurtTimer=16;
   }
 
   updateProgress();
@@ -1664,8 +1667,11 @@ function drawLimb2(x1,y1,ang1,r2,len,col,w){
   return {fx,fy};
 }
 function drawPlayer(){
-  ctx.globalAlpha=(PL.invincible>0&&Math.floor(PL.invincible/5)%2===0)?0.3:1;
-  const ppx=sx(PL.x+PL.w/2), ppy=sw(PL.y), ppby=ppy+PL.h;
+  // Gentle flicker while invincible — never drops below half-visible, so the
+  // hero never seems to "vanish" after taking a hit
+  ctx.globalAlpha=(PL.invincible>0&&Math.floor(PL.invincible/8)%2===0)?0.55:1;
+  const idleBob=(!PL.onGround||PL.attacking||Math.abs(PL.vx)>0.4)?0:Math.sin(Date.now()/350)*1.4;
+  const ppx=sx(PL.x+PL.w/2), ppy=sw(PL.y)+idleBob, ppby=ppy+PL.h;
   const skin=skins[PL.skinIdx], wep=weapons[PL.weaponIdx];
   const running=PL.onGround&&Math.abs(PL.vx)>0.4;
   const sqY=PL.landTick>0?1+PL.landTick*0.038:1;
@@ -1699,6 +1705,8 @@ function drawPlayer(){
     lH=-0.04; lK=0.04; rH=0.04; rK=-0.04; armA=0.14;
   }
   if(PL.attacking){ const at=1-PL.attackTimer/22; armA=-0.5+at*1.9; }
+  // Hurt flinch — recoils with arms up for a moment right after taking a hit
+  if(PL.hurtTimer>0){ const ht=PL.hurtTimer/16; lH=-0.35*ht; lK=0.3*ht; rH=0.35*ht; rK=-0.2*ht; armA=-1.3*ht; }
 
   // Back arm (behind body)
   drawLimb2(3, shlY+2, armA*0.55, 0.14, 9, skin.shirt+'88', 3);
@@ -1747,14 +1755,20 @@ function drawPlayer(){
   ctx.fillStyle='rgba(0,0,0,0.08)';
   ctx.beginPath(); ctx.arc(0, headCY+2, headR, 0, Math.PI); ctx.fill();
 
-  // Eyes (expressive)
-  ctx.fillStyle='white';
-  ctx.beginPath(); ctx.ellipse(3, headCY-1, 2.5, 1.8, 0, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle='#1a0c00';
-  ctx.beginPath(); ctx.arc(3, headCY-1, 1.4, 0, Math.PI*2); ctx.fill();
-  // Pupil shine
-  ctx.fillStyle='rgba(255,255,255,0.6)';
-  ctx.beginPath(); ctx.arc(3.5, headCY-1.5, 0.5, 0, Math.PI*2); ctx.fill();
+  // Eyes (expressive — blinks every few seconds so he feels alive, not robotic)
+  const blinking=(Date.now()%4000)<140;
+  if(blinking||PL.hurtTimer>0){
+    ctx.strokeStyle='#1a0c00'; ctx.lineWidth=1.2; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(1.2,headCY-1); ctx.lineTo(4.8,headCY-1); ctx.stroke();
+  } else {
+    ctx.fillStyle='white';
+    ctx.beginPath(); ctx.ellipse(3, headCY-1, 2.5, 1.8, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#1a0c00';
+    ctx.beginPath(); ctx.arc(3, headCY-1, 1.4, 0, Math.PI*2); ctx.fill();
+    // Pupil shine
+    ctx.fillStyle='rgba(255,255,255,0.6)';
+    ctx.beginPath(); ctx.arc(3.5, headCY-1.5, 0.5, 0, Math.PI*2); ctx.fill();
+  }
 
   // Eyebrow
   ctx.strokeStyle='#1a0c00'; ctx.lineWidth=1.3; ctx.lineCap='round';
