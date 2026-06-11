@@ -2229,7 +2229,9 @@ let running=false;
 function loop(){ update(); draw(); requestAnimationFrame(loop); }
 document.getElementById('startBtn').onclick=()=>{
   document.getElementById('titleScreen').style.display='none';
-  generateLevel(1); state='playing';
+  document.getElementById('gameCanvas').style.display='block';
+  generateLevel(1);
+  state='playing';
   bgMusic.play();
   if(!running){running=true;loop();}
 };
