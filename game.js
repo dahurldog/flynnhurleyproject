@@ -15,6 +15,7 @@ let   levelStartX = 80, levelStartY = GROUND_Y-36, levelGoalX = 0, levelGoalY = 
 
 let cameraX = 0, cameraY = 0;
 let state = 'title', diamonds = 0, gameLevel = 1;
+let score = 0, correctStreak = 0;
 let selectedSkin = 0, ownedSkins = [0];
 let selectedWeapon = -1, ownedWeapons = []; // -1 = use the auto level-based weapon
 function applyWeaponSelection(){
@@ -251,24 +252,24 @@ const MAX_H_GAP = 60;   // max horizontal gap — tight vertical climbing
 //   movingRate   fraction of platforms that become movers
 const PUZZLE_TYPES = [
   { key:'cavern',   name:'🕳️ Cavern Crossing', desc:'Jump the chasms — fall and you restart!',
-    dx:[25,60],   dy:[-85,-60],   weave:false, pw:[55,85],  steps:[11,16],
+    dx:[-8,8],    dy:[-90,-70],   weave:false, pw:[55,85],  steps:[14,18],
     hazardRate:0.45, enemyRate:0.12, seesawRate:0.05, collapseRate:0.08, movingRate:0.08 },
   { key:'beams',    name:'🪵 Balance Beams',    desc:'Narrow beams — watch your footing!',
-    dx:[15,40],   dy:[-95,-70],   weave:false, pw:[28,48],   steps:[12,17],
+    dx:[-5,5],    dy:[-95,-75],   weave:false, pw:[28,48],   steps:[15,20],
     hazardRate:0.12, enemyRate:0.08, seesawRate:0.55, collapseRate:0.12, movingRate:0.18 },
   { key:'gauntlet', name:'⚔️ Enemy Gauntlet',   desc:'Clear every enemy to reach the exit!',
-    dx:[30,70],  dy:[-80,-55],   weave:false, pw:[75,120],  steps:[11,15],
+    dx:[-6,6],    dy:[-85,-65],   weave:false, pw:[75,120],  steps:[14,18],
     hazardRate:0.10, enemyRate:0.75, seesawRate:0.06, collapseRate:0.06, movingRate:0.08 },
   { key:'climb',    name:'🧗 Sky Climb',         desc:'Scale the shaft — keep going up!',
-    dx:[-40,40],  dy:[-100,-75],  weave:true,  pw:[50,85],  steps:[12,16],
+    dx:[-10,10],  dy:[-100,-75],  weave:true,  pw:[50,85],  steps:[15,20],
     hazardRate:0.18, enemyRate:0.22, seesawRate:0.12, collapseRate:0.18, movingRate:0.12 },
   { key:'switches', name:'🔘 Puzzle Floor',      desc:'Hit all the switches and stay alive!',
-    dx:[20,50],  dy:[-90,-65],    weave:false, pw:[65,105],  steps:[11,15],
+    dx:[-7,7],    dy:[-90,-70],    weave:false, pw:[65,105],  steps:[14,18],
     hazardRate:0.14, enemyRate:0.22, seesawRate:0.20, collapseRate:0.08, movingRate:0.14, switchHeavy:true },
 ];
 const BOSS_TYPE = {
   key:'boss', name:'👑 Boss Arena',              desc:'Defeat the Boss to escape this floor!',
-  dx:[40,80],  dy:[-85,-60],    weave:false, pw:[100,150], steps:[8,11],
+  dx:[-10,10],  dy:[-90,-70],   weave:false, pw:[100,150], steps:[10,14],
   hazardRate:0.08, enemyRate:0.08, seesawRate:0.03, collapseRate:0.03, movingRate:0.00, bossArena:true };
 
 function makePlat(x,y,w,type,zid){
@@ -533,10 +534,18 @@ function askQuestion(cb,forDoor){
       if(ok){
         const praise=['⭐ Excellent! +15 💎 +1 ❤️','🌟 Brilliant! +15 💎 +1 ❤️','🎉 Super! +15 💎 +1 ❤️','✅ Well done! +15 💎 +1 ❤️'];
         fb.textContent=praise[idx%praise.length]; fb.style.color='#2e7d32';
-        diamonds+=15; PL.hp=Math.min(PL.maxHp,PL.hp+1); PL.regenTimer=0; buildingFlash=90; SFX.correct();
+        diamonds+=15; score+=20; correctStreak++;
+        let streakBonus=0;
+        if(correctStreak===3) streakBonus=15;
+        else if(correctStreak===5) streakBonus=40;
+        else if(correctStreak===10) streakBonus=50;
+        else if(correctStreak%10===0&&correctStreak>10) streakBonus=50;
+        if(streakBonus>0) {score+=streakBonus; fb.textContent+=` 🔥 ${correctStreak}-STREAK +${streakBonus}pts!`;}
+        PL.hp=Math.min(PL.maxHp,PL.hp+1); PL.regenTimer=0; buildingFlash=90; SFX.correct();
         setTimeout(()=>{ closeMath(); if(cb) cb(true); },900);
       } else {
         fb.textContent=`📖 Answer: ${q.a} — no harm done, you'll get the next one!`; fb.style.color='#c62828';
+        correctStreak=0;
         SFX.wrong();
         setTimeout(()=>{ closeMath(); if(cb) cb(false); },1800);
       }
@@ -995,6 +1004,7 @@ function doAttack(){
 
 function levelComplete(){
   triggerShake(10); fireworkTimer=240; SFX.levelUp();
+  score+=10;  // 10 points per level completed
   if(gameLevel===1 && !abilities.doubleJump) unlockAbility('doubleJump','⚡ Double Jump!','Tap JUMP again while in the air to jump a second time!');
   else if(gameLevel===2 && !abilities.wallJump) unlockAbility('wallJump','🧗 Wall Jump!','Slide against a wall, then tap JUMP to launch off it!');
   else if(gameLevel===3 && !abilities.dash) unlockAbility('dash','💨 Dash!','Tap DASH to burst forward at speed — great for gaps!');
@@ -1027,7 +1037,8 @@ function gameWon(){
     overlay.innerHTML=`
       <div style="text-align:center;color:#FFD700;font-family:Fredoka One,sans-serif;">
         <div style="font-size:48px;margin-bottom:20px;">🏆 YOU CLIMBED THE BURJ!</div>
-        <div style="font-size:24px;color:#aabcff;margin-bottom:40px;">💎 ${diamonds} Diamonds Collected!</div>
+        <div style="font-size:32px;color:#00ff88;margin-bottom:10px;">Score: ${score}</div>
+        <div style="font-size:18px;color:#aabcff;margin-bottom:40px;">💎 ${diamonds} Diamonds · ${correctStreak} Correct Streak</div>
         <input type="text" id="nameInput" placeholder="Enter your name..." maxlength="20" style="padding:10px;font-size:16px;border-radius:8px;border:2px solid #FFD700;width:90%;max-width:300px;background:#0d1530;color:#FFD700;text-align:center;margin-bottom:20px;">
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
           <button id="submitScore" style="padding:12px 32px;font-size:16px;background:#2e7d32;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold;">Save to Leaderboard</button>
@@ -1039,17 +1050,17 @@ function gameWon(){
     document.getElementById('nameInput').focus();
     document.getElementById('submitScore').onclick=()=>{
       const name=(document.getElementById('nameInput').value||'Player').substring(0,20);
-      saveScore(name,gameLevel,diamonds);
+      saveScore(name,gameLevel,score);
       showLeaderboardInOverlay();
     };
     document.getElementById('playAgain').onclick=()=>{ overlay.remove(); restartGame(); };
     document.getElementById('nameInput').onkeypress=(e)=>{ if(e.key==='Enter') document.getElementById('submitScore').click(); };
   }, 1100);
 }
-function saveScore(name,level,dia){
+function saveScore(name,level,pts){
   const scores=JSON.parse(localStorage.getItem('burjKhalifahScores')||'[]');
-  scores.push({name,level,diamonds:dia,date:new Date().toLocaleDateString()});
-  scores.sort((a,b)=>b.level!==a.level?b.level-a.level:b.diamonds-a.diamonds);
+  scores.push({name,level,score:pts,date:new Date().toLocaleDateString()});
+  scores.sort((a,b)=>b.score!==a.score?b.score-a.score:b.level-a.level);
   localStorage.setItem('burjKhalifahScores',JSON.stringify(scores.slice(0,100)));
   updateLeaderboardDisplay();
 }
@@ -1062,7 +1073,7 @@ function showLeaderboardInOverlay(){
   if(!lb.id) lb.id='leaderboardList';
   lb.style.cssText='color:#aabcff;font-size:14px;margin-top:20px;text-align:left;max-height:200px;overflow-y:auto;';
   lb.innerHTML='<div style="color:#FFD700;font-weight:bold;margin-bottom:10px;">🏅 TOP SCORES</div>';
-  scores.forEach((s,i)=>{ lb.innerHTML+=`<div>${i+1}. <strong style="color:#FFD700">${s.name}</strong> - Level ${s.level} · ${s.diamonds} 💎</div>`; });
+  scores.forEach((s,i)=>{ lb.innerHTML+=`<div>${i+1}. <strong style="color:#FFD700">${s.name}</strong> - ${s.score} pts (Lvl ${s.level})</div>`; });
   document.getElementById('winOverlay').appendChild(lb);
 }
 function updateLeaderboardDisplay(){
@@ -1070,10 +1081,19 @@ function updateLeaderboardDisplay(){
   if(!lb) return;
   const scores=getLeaderboard();
   lb.innerHTML='<div style="color:#FFD700;font-weight:bold;margin-bottom:8px;font-size:14px;">🏅 TOP SCORES</div>';
-  scores.slice(0,5).forEach(s=>{ lb.innerHTML+=`<div style="font-size:11px;color:#aabcff;margin:3px 0;"><strong style="color:#FFD700">${s.name}</strong> Level ${s.level}</div>`; });
+  scores.slice(0,5).forEach(s=>{ lb.innerHTML+=`<div style="font-size:11px;color:#aabcff;margin:3px 0;"><strong style="color:#FFD700">${s.name}</strong> ${s.score} pts</div>`; });
 }
-function gameOver(){ state='gameover'; saveHS(); }
-function restartGame(){ gameLevel=1; diamonds=0; abilities.doubleJump=false; abilities.wallJump=false; abilities.dash=false; lastZoneId=-1; fadeAlpha=0; fadeDir=0; generateLevel(1); state='playing'; bgMusic.play(); }
+function gameOver(){
+  state='gameover';
+  saveHS();
+  // Prompt for name to save score
+  setTimeout(()=>{
+    const name=prompt('Game Over! Final Score: '+score+'\n\nEnter your name for the leaderboard:','Player');
+    if(name) saveScore(name, gameLevel, score);
+    document.getElementById('titleScreen').style.display='flex';
+  }, 500);
+}
+function restartGame(){ gameLevel=1; diamonds=0; score=0; correctStreak=0; abilities.doubleJump=false; abilities.wallJump=false; abilities.dash=false; lastZoneId=-1; fadeAlpha=0; fadeDir=0; generateLevel(1); state='playing'; bgMusic.play(); }
 
 // ── DRAW ─────────────────────────────────────────────────────
 function draw(){
