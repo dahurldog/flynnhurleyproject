@@ -421,11 +421,11 @@ function generateLevel(lvl){
   });
 
   // ── SPIKES / HAZARDS
-  const spRate = Math.min(0.6, preset.hazardRate*DIFF);
+  const spRate = Math.min(0.6, preset.hazardRate*DIFF*0.5);
   platforms.filter(p=>p.type==='platform'&&p.floor>1).forEach(p=>{
     if(p.w>30&&Math.random()<spRate){
       const sx=p.x+6+Math.random()*Math.max(0,p.w-24);
-      hazards.push({x:sx,y:p.y-8,w:16,h:8,type:'spike',animTimer:0,extended:true});
+      hazards.push({x:sx,y:p.y-8,w:16,h:8,type:'spike',animTimer:0,extended:false,platformX:p.x,platformW:p.w});
     }
   });
 
@@ -865,15 +865,24 @@ function update(){
 
   // ── HAZARDS
   for(const hz of hazards){
-    if(PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:hz.x,y:hz.y,w:hz.w,h:hz.h})&&hz.extended){
-      PL.hp--; PL.invincible=100; PL.hurtTimer=16; PL.vy=-5;
-      triggerShake(5); hitFlash=12; SFX.hit();
-      spawnParts(PL.x+PL.w/2,PL.y,'#ff4400',8);
-      if(PL.hp<=0){gameOver();return;}
+    // Check if player is standing on same platform as spike
+    const playerOnPlatform = PL.x+PL.w > hz.platformX && PL.x < hz.platformX+hz.platformW && PL.onGround;
+
+    // Spikes pop out when player stands on platform, retract otherwise
+    if(playerOnPlatform){
+      hz.extended=true;
+      hz.animTimer++;
+      // Hurt player if they're touching the extended spike
+      if(hz.animTimer>15 && PL.invincible<=0 && overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:hz.x,y:hz.y,w:hz.w,h:hz.h})){
+        PL.hp--; PL.invincible=100; PL.hurtTimer=16; PL.vy=-5;
+        triggerShake(5); hitFlash=12; SFX.hit();
+        spawnParts(PL.x+PL.w/2,PL.y,'#ff4400',8);
+        if(PL.hp<=0){gameOver();return;}
+      }
+    } else {
+      hz.extended=false;
+      hz.animTimer=Math.max(0,hz.animTimer-2);
     }
-    // Animate spikes up/down (cycle every 60 frames)
-    hz.animTimer=(hz.animTimer+1)%120;
-    hz.extended=hz.animTimer<60;
   }
 
   // ── ENEMIES
@@ -1562,9 +1571,9 @@ function drawHazards(){
     const ssy=sw(hz.y), ssx=sx(hz.x);
     if(ssy>H||ssy+hz.h<0||ssx>W||ssx+hz.w<0) continue;
 
-    // Spikes animate up/down
+    // Spikes pop out when player stands on platform
     const spikeOffset = hz.extended ? 0 : -8;
-    ctx.fillStyle=hz.extended?'#ff2222':'#aa1111';
+    ctx.fillStyle=hz.extended?'#ff3333':'#888888';  // Grey when retracted (safe), red when extended (deadly)
     const n=Math.floor(hz.w/7);
     for(let i=0;i<n;i++){
       const hx=ssx+i*7;
