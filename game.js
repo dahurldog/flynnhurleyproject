@@ -7,9 +7,11 @@ const ctx    = canvas.getContext('2d');
 const W = canvas.width;   // 480
 const H = canvas.height;  // 600
 
-const WORLD_W  = 1920;
+let   WORLD_W  = 1920;    // each level/floor sizes its own arena to fit its puzzle
 const GROUND_Y = 1380;
-const GOAL_Y   = -7620;   // ~9000px climb (≈10x the old ~1200px) — top of the tower, the finish line
+let   GOAL_Y   = 180;     // recomputed per level — y-coordinate of that floor's goal
+let   currentZoneId = 0;  // which building zone this whole level/floor represents
+let   levelStartX = 80, levelStartY = GROUND_Y-36, levelGoalX = 0, levelGoalY = 0;
 
 let cameraX = 0, cameraY = 0;
 let state = 'title', diamonds = 0, gameLevel = 1;
@@ -29,6 +31,7 @@ let zoneTimer = 0, factTimer = 0, buildingFlash = 0;
 let fireworks = [], fireworkTimer = 0;
 let currentFloor = 1, lastZoneId = -1;
 let screenShake = 0;
+let fadeAlpha = 0, fadeDir = 0; // 0=none, 1=fading to black, -1=fading to clear
 let hitFlash = 0;
 let combo = 0, comboTimer = 0, comboMax = 0;
 let dashTrail = [];
@@ -78,19 +81,17 @@ const keyInv = {bronze:0, silver:0, gold:0};
 const KEY_COLORS = {bronze:'#cd7f32', silver:'#c0c0c0', gold:'#FFD700'};
 
 // ── ZONES (based on x progress) ──────────────────────────────
-// Zones now mark how HIGH you've climbed (pStart = fraction of the tower climbed, 0=lobby, 1=spire)
+// Each game LEVEL is one floor/zone of the tower — you move up through these
+// zones one level at a time (every ~4 levels advances to the next zone)
 const ZONES = [
-  {id:0, name:'🏜️ Ground Lobby',      pStart:0,    desc:'Floors 1–7 · Welcome to the Burj Khalifa!', sky:'#060a14'},
-  {id:1, name:'🏨 Armani Hotel',       pStart:0.06, desc:'Floors 8–37 · Luxury hotel & residences',   sky:'#07091a'},
-  {id:2, name:'🏠 Residential',        pStart:0.28, desc:'Floors 38–80 · 900 luxury apartments',      sky:'#050818'},
-  {id:3, name:'💼 Corporate Offices',  pStart:0.55, desc:'Floors 81–124 · Business hub',              sky:'#040616'},
-  {id:4, name:'🔭 At The Top',         pStart:0.82, desc:'Floors 125–148 · Observation deck',         sky:'#030510'},
-  {id:5, name:'⚡ The Spire',          pStart:0.94, desc:'Floors 149–163 · Steel spire — almost there!', sky:'#020308'},
+  {id:0, name:'🏜️ Ground Lobby',      desc:'Floors 1–7 · Welcome to the Burj Khalifa!', sky:'#060a14'},
+  {id:1, name:'🏨 Armani Hotel',       desc:'Floors 8–37 · Luxury hotel & residences',   sky:'#07091a'},
+  {id:2, name:'🏠 Residential',        desc:'Floors 38–80 · 900 luxury apartments',      sky:'#050818'},
+  {id:3, name:'💼 Corporate Offices',  desc:'Floors 81–124 · Business hub',              sky:'#040616'},
+  {id:4, name:'🔭 At The Top',         desc:'Floors 125–148 · Observation deck',         sky:'#030510'},
+  {id:5, name:'⚡ The Spire',          desc:'Floors 149–163 · Steel spire — almost there!', sky:'#020308'},
 ];
-function getZone(y){
-  const p = Math.max(0, Math.min(1, (GROUND_Y - y) / (GROUND_Y - GOAL_Y)));
-  let z=ZONES[0]; for(const zz of ZONES) if(p>=zz.pStart) z=zz; return z;
-}
+function getZone(){ return ZONES[currentZoneId]; }
 
 // ── QUESTIONS ────────────────────────────────────────────────
 const QUESTIONS = [
@@ -239,181 +240,233 @@ function jp(c){ return !!justPressed[c]; }
 const MAX_V_GAP = 32;   // max upward step — kept gentle so jumps stay comfortable
 const MAX_H_GAP = 82;    // max horizontal gap between right edge and left edge of next platform
 
+// ── LEVEL PUZZLE DEFINITIONS ──────────────────────────────────
+// Each entry describes one type of floor challenge.  Properties:
+//   dx[min,max]  horizontal advance per step (always rightward for non-weave)
+//   dy[min,max]  vertical change per step (negative = rise)
+//   weave        if true, dx may be negative (zig-zag left/right as climbing)
+//   pw[min,max]  platform width
+//   steps[min,max] number of platforms on the main path
+//   hazardRate, enemyRate, seesawRate, collapseRate  base spawn chances
+//   movingRate   fraction of platforms that become movers
+const PUZZLE_TYPES = [
+  { key:'cavern',   name:'🕳️ Cavern Crossing', desc:'Jump the chasms — fall and you restart!',
+    dx:[130,185], dy:[-18,18],   weave:false, pw:[75,115],  steps:[7,10],
+    hazardRate:0.55, enemyRate:0.12, seesawRate:0.05, collapseRate:0.05, movingRate:0.08 },
+  { key:'beams',    name:'🪵 Balance Beams',    desc:'Narrow beams — watch your footing!',
+    dx:[55,80],   dy:[-18,4],    weave:false, pw:[32,54],   steps:[9,12],
+    hazardRate:0.12, enemyRate:0.08, seesawRate:0.55, collapseRate:0.08, movingRate:0.15 },
+  { key:'gauntlet', name:'⚔️ Enemy Gauntlet',   desc:'Clear every enemy to reach the exit!',
+    dx:[70,110],  dy:[-14,10],   weave:false, pw:[95,150],  steps:[7,10],
+    hazardRate:0.10, enemyRate:0.70, seesawRate:0.06, collapseRate:0.04, movingRate:0.05 },
+  { key:'climb',    name:'🧗 Sky Climb',         desc:'Scale the shaft — keep going up!',
+    dx:[-80,80],  dy:[-55,-26],  weave:true,  pw:[68,110],  steps:[9,13],
+    hazardRate:0.16, enemyRate:0.20, seesawRate:0.10, collapseRate:0.15, movingRate:0.10 },
+  { key:'switches', name:'🔘 Puzzle Floor',      desc:'Hit all the switches and stay alive!',
+    dx:[65,100],  dy:[-16,6],    weave:false, pw:[85,130],  steps:[7,10],
+    hazardRate:0.12, enemyRate:0.20, seesawRate:0.18, collapseRate:0.06, movingRate:0.12, switchHeavy:true },
+];
+const BOSS_TYPE = {
+  key:'boss', name:'👑 Boss Arena',              desc:'Defeat the Boss to escape this floor!',
+  dx:[90,130],  dy:[-14,14],    weave:false, pw:[120,180], steps:[4,6],
+  hazardRate:0.08, enemyRate:0.08, seesawRate:0.03, collapseRate:0.03, movingRate:0.00, bossArena:true };
+
+function makePlat(x,y,w,type,zid){
+  return {x,y,w,h:14,type,floor:0,zone:zid,
+    collapseTimer:0,collapseMax:95,collapsing:false,collapseVY:0,gone:false,
+    tilt:0,tiltV:0,origX:x,origY:y};
+}
+
 function generateLevel(lvl){
   platforms=[]; enemies=[]; collectibles=[]; doors=[];
   mathTriggers=[]; shopTriggers=[]; hazards=[]; particles=[]; projectiles=[];
   visitedZones.clear(); fireworks=[]; fireworkTimer=0; buildingFlash=0;
   keyInv.bronze=0; keyInv.silver=0; keyInv.gold=0;
   switches=[]; dashTrail=[]; screenShake=0; hitFlash=0; combo=0; comboTimer=0;
+  lastZoneId=-1;
 
-  // ── MAIN PATH (guaranteed reachable) — a long upward CLIMB through the
-  // tower: each platform sits a bit higher than the last and weaves left
-  // and right across the building's width, like climbing up Burj Khalifa
-  const path = [];
-  let cx = 80, cy = GROUND_Y, pw = 160;
-  path.push({x:cx, y:cy, w:pw}); // starting ledge
+  // Difficulty multiplier — scales enemy count, HP, gap sizes; caps so it
+  // never becomes completely impossible
+  const DIFF = Math.min(3.0, 1 + (lvl-1)*0.10);
 
-  while(cy > GOAL_Y + 80){
-    const climbed = GROUND_Y - cy;
-    const isEarly = climbed < 500; // keep the first stretch gentle so it's learnable
-    pw = 80 + Math.random()*110;
-    // Rise — kept well within jump height so every step stays reachable
-    const vgap = isEarly ? (20 + Math.random()*16) : (26 + Math.random()*(MAX_V_GAP-4));
-    cy = Math.max(GOAL_Y+40, cy - vgap);
-    // Weave left/right across the tower's width as we climb
-    const maxShift = isEarly ? 60 : MAX_H_GAP;
-    cx = Math.max(40, Math.min(WORLD_W-pw-40, cx + (Math.random()-0.5)*2*maxShift));
-    path.push({x:cx, y:cy, w:pw});
+  // Zone / visual theme — advances every 4 levels through the building
+  currentZoneId = Math.min(5, Math.floor((lvl-1)/4));
+
+  // Choose the puzzle type for this level (boss every 6th level)
+  const preset = (lvl%6===0) ? BOSS_TYPE : PUZZLE_TYPES[(lvl-1)%PUZZLE_TYPES.length];
+
+  const nSteps = preset.steps[0] + Math.floor(Math.random()*(preset.steps[1]-preset.steps[0]+1));
+
+  // Pre-compute world dimensions so we can clamp while building the path
+  const dxMid = (preset.dx[0]+preset.dx[1])/2;
+  const dyMid = (preset.dy[0]+preset.dy[1])/2;
+  if(preset.weave){
+    WORLD_W = 820;
+    GOAL_Y  = Math.round(GROUND_Y + dyMid*nSteps - 200);
+  } else {
+    WORLD_W = Math.max(900, Math.round(80 + dxMid*nSteps + 500));
+    GOAL_Y  = Math.round(GROUND_Y + dyMid*nSteps - 180);
+  }
+  GOAL_Y = Math.min(GROUND_Y-200, GOAL_Y); // always at least 200px up
+
+  // ── MAIN PATH (all platforms guaranteed reachable in one chain)
+  const path=[];
+  let cx=80, cy=GROUND_Y, pw=160;
+  path.push({x:cx,y:cy,w:pw});
+
+  for(let i=1;i<nSteps;i++){
+    pw = preset.pw[0] + Math.random()*(preset.pw[1]-preset.pw[0]);
+    const dy = preset.dy[0] + Math.random()*(preset.dy[1]-preset.dy[0]);
+    const dx = preset.weave
+      ? (Math.random()-0.5)*2*Math.max(Math.abs(preset.dx[0]),Math.abs(preset.dx[1]))
+      : preset.dx[0] + Math.random()*(preset.dx[1]-preset.dx[0]);
+    cy = Math.max(GOAL_Y+60, Math.min(GROUND_Y-30, cy+dy));
+    if(preset.weave) cx = Math.max(40, Math.min(WORLD_W-pw-40, cx+dx));
+    else             cx = Math.min(WORLD_W-pw-60, cx+dx);
+    path.push({x:cx,y:cy,w:pw});
   }
 
-  // Build platforms from path
-  path.forEach((p, i) => {
-    const zone = getZone(p.y);
-    const isBoss = (i > 0 && i % 12 === 0);
-    let type = 'platform';
-    if(isBoss) type = 'boss';
-    else if(i % 9 === 0) type = 'checkpoint';
-    else {
-      const r = Math.random();
-      if(r < 0.07) type = 'collapse';
-      else if(r < 0.22) type = 'seesaw';
+  // Store level start/end for progress bar
+  levelStartX=80; levelStartY=GROUND_Y-36;
+
+  // ── STARTING SLAB
+  platforms.push(makePlat(0, GROUND_Y, 500, 'ground', currentZoneId));
+
+  // ── PATH PLATFORMS
+  path.forEach((p,i)=>{
+    let type='platform';
+    if(i===Math.floor(nSteps/2)) type='checkpoint';
+    else{
+      const r=Math.random();
+      if(r < preset.collapseRate) type='collapse';
+      else if(r < preset.collapseRate+preset.seesawRate) type='seesaw';
     }
-    platforms.push({
-      x:p.x, y:p.y, w:p.w, h:14, type, floor:i+1, zone:zone.id,
-      collapseTimer:0, collapseMax:95, collapsing:false, collapseVY:0, gone:false,
-      tilt:0, tiltV:0, origX:p.x, origY:p.y,
-    });
+    const pl=makePlat(p.x,p.y,p.w,type,currentZoneId);
+    pl.floor=i+1;
+    platforms.push(pl);
   });
 
-  // Ground slab (left side starting area)
-  platforms.unshift({x:0, y:GROUND_Y, w:500, h:20, type:'ground',
-    collapseTimer:0,collapseMax:95,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
+  // ── GOAL PLATFORM — placed just beyond the last path ledge
+  const lastP=path[path.length-1];
+  let goalX, goalY;
+  if(preset.weave){
+    goalX = Math.max(40, Math.min(WORLD_W-260, lastP.x+lastP.w/2-100));
+    goalY = Math.min(GOAL_Y, lastP.y-60);
+  } else {
+    goalX = lastP.x+lastP.w+80;
+    goalY = lastP.y - 40;
+    WORLD_W = Math.max(WORLD_W, goalX+280);
+  }
+  levelGoalX=goalX+100; levelGoalY=goalY;
+  platforms.push(makePlat(goalX, goalY, 220, 'goal', currentZoneId));
 
-  // Goal platform — sits at the very top of the tower, just above the last
-  // climbed ledge so the final jump leads straight onto it
-  const lastP = path[path.length-1];
-  const goalX = Math.max(40, Math.min(WORLD_W-260, lastP.x + lastP.w/2 - 100));
-  platforms.push({x:goalX, y:GOAL_Y, w:200, h:14, type:'goal',
-    collapseTimer:0,collapseMax:95,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
-
-  // ── EXTRA DETAIL PLATFORMS (off-path, for exploration)
-  for(let i=0; i<path.length-1; i++){
-    if(Math.random()<0.60){
-      const p = path[i];
-      const ex = p.x + p.w*0.3 + Math.random()*p.w*0.4;
-      const ey = p.y - 20 - Math.random()*40;
-      if(ey > GOAL_Y+20){
-        platforms.push({x:ex, y:ey, w:50+Math.random()*60, h:12, type:'platform',
-          floor:i+1, zone:getZone(ey).id,
-          collapseTimer:0,collapseMax:95,collapsing:false,collapseVY:0,gone:false,tilt:0,tiltV:0});
+  // ── EXTRA DETAIL LEDGES (optional hop-off platforms, not too close to main path)
+  if(preset.key!=='beams'){
+    path.forEach((p,i)=>{
+      if(i===0||i===nSteps-1) return;
+      if(Math.random()<0.45){
+        const ex=p.x+Math.random()*Math.max(0,p.w-30);
+        const ey=p.y-28-Math.random()*38;
+        if(ey>GOAL_Y+20){
+          const dp=makePlat(ex,ey,50+Math.random()*55,'platform',currentZoneId);
+          dp.floor=i+1;
+          platforms.push(dp);
+        }
       }
-    }
+    });
   }
 
-  // ── MOVING PLATFORMS (every 4th path platform in zone 1+)
-  let movIdx=0;
-  platforms.filter(p=>p.type==='platform'&&p.zone>=2).forEach(p=>{
-    movIdx++;
-    if(movIdx%4===0){
+  // ── MOVING PLATFORMS (scaled by difficulty)
+  const mRate = preset.movingRate*(0.5+DIFF*0.5);
+  platforms.filter(p=>p.type==='platform'&&p.floor>2).forEach(p=>{
+    if(Math.random()<mRate){
       p.moving=true; p.moveDir=1; p.movVx=0;
-      p.moveSpeed=0.5+Math.random()*0.5;
-      p.moveRange=50+Math.random()*70;
+      p.moveSpeed=0.4+Math.random()*0.5*Math.min(DIFF,1.8);
+      p.moveRange=45+Math.random()*60;
       p.moveOriginX=p.x;
     }
   });
 
-  // ── PRESSURE PLATE SWITCHES (reward math question + diamonds)
-  switches=[];
+  // ── SWITCHES (more on switch-heavy floors, otherwise occasional)
+  const swDensity = preset.switchHeavy ? 0.65 : 0.28;
   let swIdx=0;
-  platforms.filter(p=>p.type==='platform'&&p.zone>=1&&p.w>=60).forEach(p=>{
+  platforms.filter(p=>p.type==='platform'&&p.w>=55).forEach(p=>{
     swIdx++;
-    if(swIdx%5===2&&Math.random()<0.55){
+    if(swIdx%3===0&&Math.random()<swDensity){
       switches.push({x:p.x+p.w/2-12,y:p.y-10,w:24,h:10,
-        activated:false,flash:0,reward:20+Math.floor(Math.random()*20)});
+        activated:false,flash:0,reward:15+Math.floor(Math.random()*25)});
     }
   });
 
-  // ── SPIKES (zone 2+)
-  platforms.filter(p=>p.type==='platform'&&p.zone>=2).forEach(p=>{
-    if(Math.random()<0.11){
-      hazards.push({x:p.x+8+Math.random()*(p.w-26), y:p.y-8, w:18, h:8, type:'spike'});
+  // ── SPIKES / HAZARDS
+  const spRate = Math.min(0.6, preset.hazardRate*DIFF);
+  platforms.filter(p=>p.type==='platform'&&p.floor>1).forEach(p=>{
+    if(p.w>30&&Math.random()<spRate){
+      const sx=p.x+6+Math.random()*Math.max(0,p.w-24);
+      hazards.push({x:sx,y:p.y-8,w:16,h:8,type:'spike'});
     }
   });
 
   // ── ENEMIES
-  const ENEMY_POOL = [
-    ['grunt','grunt'],           // zone 0
-    ['grunt','soldier'],         // zone 1
-    ['soldier','soldier'],       // zone 2
-    ['soldier','captain'],       // zone 3
-    ['captain','phantom'],       // zone 4
-    ['captain','titan','phantom'],// zone 5
+  const ENEMY_POOL=[
+    ['grunt'],
+    ['grunt','soldier'],
+    ['soldier'],
+    ['soldier','captain'],
+    ['captain','phantom'],
+    ['captain','titan','phantom'],
   ];
-  platforms.filter(p=>p.type==='platform'&&p.floor>3).forEach(p=>{
-    if(Math.random()<0.34+lvl*0.03){
-      const pool=ENEMY_POOL[Math.min(p.zone,5)];
-      const etype=pool[Math.floor(Math.random()*pool.length)];
-      enemies.push(makeEnemy(etype,p.x,p.y,p.w,p.zone,lvl));
+  const pool=ENEMY_POOL[Math.min(currentZoneId,5)];
+  const eRate = Math.min(0.90, preset.enemyRate * DIFF);
+  platforms.filter(p=>p.type==='platform'&&p.floor>1).forEach(p=>{
+    if(Math.random()<eRate){
+      const et=pool[Math.floor(Math.random()*pool.length)];
+      enemies.push(makeEnemy(et,p.x,p.y,p.w,currentZoneId,lvl));
     }
-    if(p.type==='boss'){
-      const bhp=(10+p.zone*5)*(1+(lvl-1)*0.4);
-      enemies.push({x:p.x+p.w/2-28,y:p.y-70,w:56,h:70,hp:bhp,maxHp:bhp,
-        vx:0.5+p.zone*0.1,platX:p.x,platW:p.w,platY:p.y,
-        dead:false,deadTimer:0,isBoss:true,etype:'boss',zoneId:p.zone,
+  });
+
+  // Boss arena — one big boss on the widest platform
+  if(preset.bossArena){
+    const arena=platforms.filter(p=>p.type==='platform').sort((a,b)=>b.w-a.w)[0];
+    if(arena){
+      arena.type='boss';
+      const bhp=Math.round((15+currentZoneId*8)*(1+(lvl-1)*0.35));
+      enemies.push({x:arena.x+arena.w/2-28,y:arena.y-70,w:56,h:70,
+        hp:bhp,maxHp:bhp,vx:0.5+currentZoneId*0.12,
+        platX:arena.x,platW:arena.w,platY:arena.y,
+        dead:false,deadTimer:0,isBoss:true,etype:'boss',zoneId:currentZoneId,
         phase:0,stunned:0,ranged:true,shootTimer:90,animTick:0,facing:1,attackAnim:0});
     }
-  });
+  }
 
-  // ── COLLECTIBLES (diamonds, food, keys)
-  platforms.filter(p=>p.type!=='ground'&&p.type!=='goal').forEach((p,i)=>{
-    // Diamonds
-    const dc = 1 + Math.floor(Math.random()*3);
-    for(let d=0; d<dc; d++)
-      collectibles.push({x:p.x+10+d*22, y:p.y-20, w:14, h:14, type:'diamond',
-        collected:false, bob:Math.random()*Math.PI*2});
-    // Food (regular health pickups — kept frequent so practising never feels punishing)
-    if(Math.random()<0.34)
-      collectibles.push({x:p.x+p.w/2-9, y:p.y-24, w:18, h:18, type:'food',
-        food:foods[Math.floor(Math.random()*foods.length)], collected:false, bob:Math.random()*Math.PI*2});
-    // Checkpoint orb
+  // ── COLLECTIBLES (diamonds, food, checkpoint orb)
+  platforms.filter(p=>p.type!=='ground'&&p.type!=='goal').forEach(p=>{
+    const dc=1+Math.floor(Math.random()*3);
+    for(let d=0;d<dc;d++)
+      collectibles.push({x:p.x+8+d*20,y:p.y-20,w:14,h:14,type:'diamond',
+        collected:false,bob:Math.random()*Math.PI*2});
+    if(Math.random()<0.38)
+      collectibles.push({x:p.x+p.w/2-9,y:p.y-24,w:18,h:18,type:'food',
+        food:foods[Math.floor(Math.random()*foods.length)],collected:false,bob:Math.random()*Math.PI*2});
     if(p.type==='checkpoint')
-      collectibles.push({x:p.x+p.w/2-10, y:p.y-26, w:20, h:20, type:'checkpoint',
-        collected:false, bob:0});
+      collectibles.push({x:p.x+p.w/2-10,y:p.y-26,w:20,h:20,type:'checkpoint',
+        collected:false,bob:0});
   });
 
-  // ── KEYS (one per zone transition, placed mid-zone)
-  const keyTypes=['bronze','silver','gold'];
-  [0,1,2].forEach((zi,ki)=>{
-    const zonePlats=platforms.filter(p=>p.zone===zi&&p.type==='platform');
-    if(zonePlats.length>0){
-      const p=zonePlats[Math.floor(zonePlats.length/2)];
-      collectibles.push({x:p.x+p.w/2-8, y:p.y-28, w:16, h:20, type:'key',
-        keyColor:keyTypes[ki], collected:false, bob:Math.random()*Math.PI*2});
-    }
+  // ── MATH TRIGGERS — 2 per level (spaced evenly along path)
+  const mTrigSlots=[Math.floor(nSteps*0.3), Math.floor(nSteps*0.7)];
+  mTrigSlots.forEach(si=>{
+    const p=path[Math.min(si,path.length-1)];
+    mathTriggers.push({x:p.x+p.w/2-18,y:p.y-52,w:36,h:36,triggered:false});
   });
-
-  // Doors removed — keys now give bonus diamonds instead
-
-  // ── MATH TRIGGERS (placed every ~450px of height climbed, so they show up
-  // steadily as you ascend rather than clustering near the bottom)
-  for(let my=GROUND_Y-260; my>GOAL_Y+200; my-=450){
-    const nearPlats=platforms.filter(p=>p.type==='platform'&&Math.abs(p.y-my)<140);
-    if(nearPlats.length>0){
-      const p=nearPlats[Math.floor(Math.random()*nearPlats.length)];
-      mathTriggers.push({x:p.x+p.w/2-18, y:p.y-50, w:36, h:36, triggered:false});
-    }
+  if(preset.switchHeavy){
+    const p=path[Math.floor(nSteps*0.5)];
+    mathTriggers.push({x:p.x+p.w/2+20,y:p.y-52,w:36,h:36,triggered:false});
   }
 
-  // ── SHOP KIOSKS (walk into one any time to spend diamonds on skins & weapons —
-  // placed every ~1500px climbed so the shop shows up often during the run, not
-  // just between levels)
-  for(let my=GROUND_Y-700; my>GOAL_Y+260; my-=1500){
-    const nearPlats=platforms.filter(p=>p.type==='platform'&&Math.abs(p.y-my)<200);
-    if(nearPlats.length>0){
-      const p=nearPlats[Math.floor(Math.random()*nearPlats.length)];
-      shopTriggers.push({x:p.x+p.w/2-16, y:p.y-52, w:32, h:36, used:false});
-    }
-  }
+  // ── SHOP KIOSK — one per level, placed at the mid-point of the path
+  const midP=path[Math.floor(nSteps/2)];
+  shopTriggers.push({x:midP.x+midP.w/2-16,y:midP.y-54,w:32,h:36,used:false});
 
   cameraX=0; cameraY=GROUND_Y-H*0.6;
   PL.x=80; PL.y=GROUND_Y-36; PL.vx=0; PL.vy=0; PL.hp=PL.maxHp;
@@ -454,7 +507,7 @@ function askQuestion(cb,forDoor){
   questionUsed.push(idx);
   const q=QUESTIONS[idx];
   state='math';
-  document.getElementById('mathFloorTag').textContent=`Zone ${getZone(PL.y).id+1} · ${q.cat==='trivia'?'🏙️ Trivia':'📐 Maths'} Year ${q.y}`;
+  document.getElementById('mathFloorTag').textContent=`Zone ${getZone().id+1} · ${q.cat==='trivia'?'🏙️ Trivia':'📐 Maths'} Year ${q.y}`;
   document.getElementById('mathFact').textContent='🏗️ '+q.fact;
   document.getElementById('mathQuestion').textContent=q.q;
   document.getElementById('mathFeedback').textContent='';
@@ -566,9 +619,14 @@ document.getElementById('resetWeapon').onclick=()=>{
 
 // ── HUD HELPERS ───────────────────────────────────────────────
 function updateProgress(){
-  const pct=Math.round(Math.max(0,Math.min(1,(GROUND_Y-PL.y)/(GROUND_Y-GOAL_Y)))*100);
+  const dx=levelGoalX-levelStartX||1, dy=levelGoalY-levelStartY||1;
+  const tot=Math.sqrt(dx*dx+dy*dy);
+  const pdx=PL.x-levelStartX, pdy=PL.y-levelStartY;
+  // dot product along the start→goal vector gives how far along the player is
+  const along=(pdx*dx+pdy*dy)/tot;
+  const pct=Math.round(Math.max(0,Math.min(1,along/tot))*100);
   document.getElementById('progressFill').style.width=pct+'%';
-  document.getElementById('progressLabel').textContent=pct+'% climbed';
+  document.getElementById('progressLabel').textContent='Floor '+gameLevel+' · '+pct+'%';
 }
 function showFact(txt){
   const el=document.getElementById('factPopup');
@@ -613,6 +671,7 @@ function update(){
   PL.runTick++; if(PL.runTick>=PL.RUN_SPEED){PL.runTick=0;PL.runFrame=(PL.runFrame+1)%6;}
   if(PL.landTick>0) PL.landTick--;
   if(PL.hurtTimer>0) PL.hurtTimer--;
+  if(fadeDir!==0){ fadeAlpha=Math.max(0,Math.min(1,fadeAlpha+fadeDir*0.045)); }
   if(PL.dashCooldown>0) PL.dashCooldown--;
   if(PL.wallJumpCooldown>0) PL.wallJumpCooldown--;
   if(factTimer>0){factTimer--; if(factTimer===0) document.getElementById('factPopup').classList.remove('show');}
@@ -899,20 +958,25 @@ function doAttack(){
 }
 
 function levelComplete(){
-  triggerShake(10); fireworkTimer=300; SFX.levelUp();
+  triggerShake(10); fireworkTimer=240; SFX.levelUp();
   if(gameLevel===1 && !abilities.doubleJump) unlockAbility('doubleJump','⚡ Double Jump!','Tap JUMP again while in the air to jump a second time!');
   else if(gameLevel===2 && !abilities.wallJump) unlockAbility('wallJump','🧗 Wall Jump!','Slide against a wall, then tap JUMP to launch off it!');
   else if(gameLevel===3 && !abilities.dash) unlockAbility('dash','💨 Dash!','Tap DASH to burst forward at speed — great for gaps!');
   saveHS();
+  // Fade to black, swap level, then fade back in
+  fadeDir=1; fadeAlpha=0;
   setTimeout(()=>{
-    gameLevel++; generateLevel(gameLevel); PL.maxHp=Math.min(9,PL.maxHp+1); PL.hp=PL.maxHp; state='playing';
-    showFact('🏆 Level '+gameLevel+'!');
-    // Pop the shop open at the start of each level — a natural break to spend diamonds on new gear
-    setTimeout(()=>{ if(state==='playing') openShop(); }, 1500);
-  },3200);
+    gameLevel++;
+    generateLevel(gameLevel);
+    PL.maxHp=Math.min(9,PL.maxHp+1); PL.hp=PL.maxHp;
+    state='playing';
+    fadeDir=-1; // now fade back in to reveal the new floor
+    showFact('🏆 Floor '+gameLevel+' — '+PUZZLE_TYPES[(gameLevel-1)%PUZZLE_TYPES.length]?.name || '');
+    setTimeout(()=>{ if(state==='playing') openShop(); }, 1800);
+  }, 1100); // 1100ms ≈ time for fadeAlpha to reach 1 at 0.045/frame × 60fps
 }
 function gameOver(){ state='gameover'; saveHS(); }
-function restartGame(){ gameLevel=1; diamonds=0; abilities.doubleJump=false; abilities.wallJump=false; abilities.dash=false; lastZoneId=-1; generateLevel(1); state='playing'; bgMusic.play(); }
+function restartGame(){ gameLevel=1; diamonds=0; abilities.doubleJump=false; abilities.wallJump=false; abilities.dash=false; lastZoneId=-1; fadeAlpha=0; fadeDir=0; generateLevel(1); state='playing'; bgMusic.play(); }
 
 // ── DRAW ─────────────────────────────────────────────────────
 function draw(){
@@ -939,6 +1003,7 @@ function draw(){
     ctx.fillStyle=`rgba(255,50,50,${hitFlash/18*0.45})`;
     ctx.fillRect(0,0,W,H); hitFlash--;
   }
+  if(fadeAlpha>0){ ctx.fillStyle=`rgba(0,0,0,${fadeAlpha})`; ctx.fillRect(0,0,W,H); }
   drawHUD();
   ctx.restore();
   if(mapOpen) drawMap();
@@ -1928,7 +1993,7 @@ function drawHUD(){
   ctx.strokeStyle='#FFD700';ctx.lineWidth=1.5;ctx.beginPath();if(ctx.roundRect)ctx.roundRect(bx,by,bw,bh,4);else ctx.rect(bx,by,bw,bh);ctx.stroke();
   ctx.fillStyle='#fff';ctx.font='bold 9px Nunito,Arial';ctx.textAlign='center';ctx.fillText('❤️ '+PL.hp+'/'+PL.maxHp,bx+bw/2,by+12);
 
-  const pills=[{t:'⚔️ '+weapons[PL.weaponIdx].name,x:8,y:8},{t:'🏢 '+getZone(PL.y).name.split(' ').slice(1).join(' '),x:8,y:26},{t:'💎 '+diamonds,x:8,y:44}];
+  const pills=[{t:'⚔️ '+weapons[PL.weaponIdx].name,x:8,y:8},{t:'🏢 '+getZone().name.split(' ').slice(1).join(' '),x:8,y:26},{t:'💎 '+diamonds,x:8,y:44}];
   pills.forEach(p=>{
     ctx.fillStyle='rgba(0,0,0,0.55)';ctx.beginPath();const tw=ctx.measureText(p.t).width;if(ctx.roundRect)ctx.roundRect(p.x-3,p.y-1,tw+10,16,8);else ctx.rect(p.x-3,p.y-1,tw+10,16);ctx.fill();
     ctx.fillStyle='#fff';ctx.font='bold 11px Nunito,Arial';ctx.textAlign='left';ctx.fillText(p.t,p.x+2,p.y+11);
@@ -2015,7 +2080,7 @@ function drawGameOver(){
   ctx.fillStyle='#ff4444'; ctx.font='bold 44px Fredoka One,Arial'; ctx.textAlign='center';
   ctx.fillText('GAME OVER',W/2,H/2-80);
   ctx.fillStyle='#FFD700'; ctx.font='17px Fredoka One,Arial';
-  ctx.fillText(getZone(PL.y).name,W/2,H/2-42);
+  ctx.fillText(getZone().name,W/2,H/2-42);
   ctx.fillText('💎 '+diamonds+' diamonds  ·  '+comboMax+'× best combo',W/2,H/2-18);
   const hs=loadHS();
   if(hs.diamonds){
