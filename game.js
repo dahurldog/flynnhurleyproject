@@ -252,21 +252,25 @@ const MAX_H_GAP = 60;   // max horizontal gap — tight vertical climbing
 //   movingRate   fraction of platforms that become movers
 const PUZZLE_TYPES = [
   { key:'cavern',   name:'🕳️ Cavern Crossing', desc:'Jump the chasms — fall and you restart!',
-    dx:[-8,8],    dy:[-90,-70],   weave:false, pw:[55,85],  steps:[14,18],
+    dx:[-35,35],   dy:[-90,-70],   weave:false, pw:[55,85],  steps:[14,18],
     hazardRate:0.45, enemyRate:0.12, seesawRate:0.05, collapseRate:0.08, movingRate:0.08 },
   { key:'beams',    name:'🪵 Balance Beams',    desc:'Narrow beams — watch your footing!',
-    dx:[-5,5],    dy:[-95,-75],   weave:false, pw:[28,48],   steps:[15,20],
+    dx:[-25,25],   dy:[-95,-75],   weave:false, pw:[28,48],   steps:[15,20],
     hazardRate:0.12, enemyRate:0.08, seesawRate:0.55, collapseRate:0.12, movingRate:0.18 },
   { key:'gauntlet', name:'⚔️ Enemy Gauntlet',   desc:'Clear every enemy to reach the exit!',
-    dx:[-6,6],    dy:[-85,-65],   weave:false, pw:[75,120],  steps:[14,18],
+    dx:[-30,30],   dy:[-85,-65],   weave:false, pw:[75,120],  steps:[14,18],
     hazardRate:0.10, enemyRate:0.75, seesawRate:0.06, collapseRate:0.06, movingRate:0.08 },
   { key:'climb',    name:'🧗 Sky Climb',         desc:'Scale the shaft — keep going up!',
-    dx:[-10,10],  dy:[-100,-75],  weave:true,  pw:[50,85],  steps:[15,20],
+    dx:[-40,40],   dy:[-100,-75],  weave:true,  pw:[50,85],  steps:[15,20],
     hazardRate:0.18, enemyRate:0.22, seesawRate:0.12, collapseRate:0.18, movingRate:0.12 },
   { key:'switches', name:'🔘 Puzzle Floor',      desc:'Hit all the switches and stay alive!',
-    dx:[-7,7],    dy:[-90,-70],    weave:false, pw:[65,105],  steps:[14,18],
+    dx:[-28,28],   dy:[-90,-70],    weave:false, pw:[65,105],  steps:[14,18],
     hazardRate:0.14, enemyRate:0.22, seesawRate:0.20, collapseRate:0.08, movingRate:0.14, switchHeavy:true },
 ];
+const HARD_LEVEL = {
+  key:'hard',   name:'⛓️ CHAIN CHALLENGE',     desc:'Survive the gauntlet without rest!',
+  dx:[-45,45],  dy:[-95,-75],   weave:true,  pw:[40,70],  steps:[20,26],
+  hazardRate:0.55, enemyRate:0.65, seesawRate:0.25, collapseRate:0.20, movingRate:0.20 };
 const BOSS_TYPE = {
   key:'boss', name:'👑 Boss Arena',              desc:'Defeat the Boss to escape this floor!',
   dx:[-10,10],  dy:[-90,-70],   weave:false, pw:[100,150], steps:[10,14],
@@ -317,8 +321,14 @@ function generateLevel(lvl){
   // Zone / visual theme — advances every 4 levels through the building
   currentZoneId = Math.min(5, Math.floor((lvl-1)/4));
 
-  // Choose the puzzle type for this level (boss every 6th level)
-  const preset = (lvl%6===0) ? BOSS_TYPE : PUZZLE_TYPES[(lvl-1)%PUZZLE_TYPES.length];
+  // Choose the puzzle type for this level
+  // Every 10 levels: hard checkpoint challenge
+  // Every 6 levels (not 10): boss fight
+  // Otherwise: regular puzzle
+  let preset;
+  if(lvl%10===0) preset = HARD_LEVEL;
+  else if(lvl%6===0) preset = BOSS_TYPE;
+  else preset = PUZZLE_TYPES[(lvl-1)%PUZZLE_TYPES.length];
 
   const nSteps = preset.steps[0] + Math.floor(Math.random()*(preset.steps[1]-preset.steps[0]+1));
 
