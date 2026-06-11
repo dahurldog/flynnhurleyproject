@@ -237,8 +237,8 @@ function jp(c){ return !!justPressed[c]; }
 
 // ── LEVEL GENERATION ─────────────────────────────────────────
 // Guaranteed-reachable path: each platform within jump range of previous
-const MAX_V_GAP = 32;   // max upward step — kept gentle so jumps stay comfortable
-const MAX_H_GAP = 82;    // max horizontal gap between right edge and left edge of next platform
+const MAX_V_GAP = 100;  // max upward step — allow bigger vertical jumps
+const MAX_H_GAP = 60;   // max horizontal gap — tight vertical climbing
 
 // ── LEVEL PUZZLE DEFINITIONS ──────────────────────────────────
 // Each entry describes one type of floor challenge.  Properties:
@@ -251,24 +251,24 @@ const MAX_H_GAP = 82;    // max horizontal gap between right edge and left edge 
 //   movingRate   fraction of platforms that become movers
 const PUZZLE_TYPES = [
   { key:'cavern',   name:'🕳️ Cavern Crossing', desc:'Jump the chasms — fall and you restart!',
-    dx:[145,205], dy:[-22,22],   weave:false, pw:[75,115],  steps:[7,10],
-    hazardRate:0.55, enemyRate:0.12, seesawRate:0.05, collapseRate:0.05, movingRate:0.08 },
+    dx:[25,60],   dy:[-85,-60],   weave:false, pw:[55,85],  steps:[11,16],
+    hazardRate:0.45, enemyRate:0.12, seesawRate:0.05, collapseRate:0.08, movingRate:0.08 },
   { key:'beams',    name:'🪵 Balance Beams',    desc:'Narrow beams — watch your footing!',
-    dx:[60,90],   dy:[-20,6],    weave:false, pw:[32,54],   steps:[9,12],
-    hazardRate:0.12, enemyRate:0.08, seesawRate:0.55, collapseRate:0.08, movingRate:0.15 },
+    dx:[15,40],   dy:[-95,-70],   weave:false, pw:[28,48],   steps:[12,17],
+    hazardRate:0.12, enemyRate:0.08, seesawRate:0.55, collapseRate:0.12, movingRate:0.18 },
   { key:'gauntlet', name:'⚔️ Enemy Gauntlet',   desc:'Clear every enemy to reach the exit!',
-    dx:[80,125],  dy:[-16,12],   weave:false, pw:[95,150],  steps:[7,10],
-    hazardRate:0.10, enemyRate:0.70, seesawRate:0.06, collapseRate:0.04, movingRate:0.05 },
+    dx:[30,70],  dy:[-80,-55],   weave:false, pw:[75,120],  steps:[11,15],
+    hazardRate:0.10, enemyRate:0.75, seesawRate:0.06, collapseRate:0.06, movingRate:0.08 },
   { key:'climb',    name:'🧗 Sky Climb',         desc:'Scale the shaft — keep going up!',
-    dx:[-80,80],  dy:[-55,-26],  weave:true,  pw:[68,110],  steps:[9,13],
-    hazardRate:0.16, enemyRate:0.20, seesawRate:0.10, collapseRate:0.15, movingRate:0.10 },
+    dx:[-40,40],  dy:[-100,-75],  weave:true,  pw:[50,85],  steps:[12,16],
+    hazardRate:0.18, enemyRate:0.22, seesawRate:0.12, collapseRate:0.18, movingRate:0.12 },
   { key:'switches', name:'🔘 Puzzle Floor',      desc:'Hit all the switches and stay alive!',
-    dx:[72,115],  dy:[-16,6],    weave:false, pw:[85,130],  steps:[7,10],
-    hazardRate:0.12, enemyRate:0.20, seesawRate:0.18, collapseRate:0.06, movingRate:0.12, switchHeavy:true },
+    dx:[20,50],  dy:[-90,-65],    weave:false, pw:[65,105],  steps:[11,15],
+    hazardRate:0.14, enemyRate:0.22, seesawRate:0.20, collapseRate:0.08, movingRate:0.14, switchHeavy:true },
 ];
 const BOSS_TYPE = {
   key:'boss', name:'👑 Boss Arena',              desc:'Defeat the Boss to escape this floor!',
-  dx:[90,130],  dy:[-14,14],    weave:false, pw:[120,180], steps:[4,6],
+  dx:[40,80],  dy:[-85,-60],    weave:false, pw:[100,150], steps:[8,11],
   hazardRate:0.08, enemyRate:0.08, seesawRate:0.03, collapseRate:0.03, movingRate:0.00, bossArena:true };
 
 function makePlat(x,y,w,type,zid){
@@ -321,21 +321,15 @@ function generateLevel(lvl){
 
   const nSteps = preset.steps[0] + Math.floor(Math.random()*(preset.steps[1]-preset.steps[0]+1));
 
-  // Pre-compute world dimensions so we can clamp while building the path
-  const dxMid = (preset.dx[0]+preset.dx[1])/2;
+  // World is now TALL and NARROW for vertical progression (approximately 10 floors per level)
+  // 163 floors total / ~16 levels = ~10 floors per level
+  WORLD_W = 480;  // narrow chamber, focus on vertical
   const dyMid = (preset.dy[0]+preset.dy[1])/2;
-  if(preset.weave){
-    WORLD_W = 820;
-    GOAL_Y  = Math.round(GROUND_Y + dyMid*nSteps - 200);
-  } else {
-    WORLD_W = Math.max(900, Math.round(80 + dxMid*nSteps + 500));
-    GOAL_Y  = Math.round(GROUND_Y + dyMid*nSteps - 180);
-  }
-  GOAL_Y = Math.min(GROUND_Y-200, GOAL_Y); // always at least 200px up
+  GOAL_Y = Math.round(GROUND_Y + dyMid*nSteps + 60);  // climb to top of screen
 
   // ── MAIN PATH (all platforms guaranteed reachable in one chain)
   const path=[];
-  let cx=80, cy=GROUND_Y, pw=160;
+  let cx=WORLD_W/2-80, cy=GROUND_Y, pw=160;
   path.push({x:cx,y:cy,w:pw});
 
   for(let i=1;i<nSteps;i++){
@@ -345,16 +339,16 @@ function generateLevel(lvl){
       ? (Math.random()-0.5)*2*Math.max(Math.abs(preset.dx[0]),Math.abs(preset.dx[1]))
       : preset.dx[0] + Math.random()*(preset.dx[1]-preset.dx[0]);
     cy = Math.max(GOAL_Y+60, Math.min(GROUND_Y-30, cy+dy));
-    if(preset.weave) cx = Math.max(40, Math.min(WORLD_W-pw-40, cx+dx));
-    else             cx = Math.min(WORLD_W-pw-60, cx+dx);
+    if(preset.weave) cx = Math.max(20, Math.min(WORLD_W-pw-20, cx+dx));
+    else             cx = Math.max(20, Math.min(WORLD_W-pw-20, cx+dx));
     path.push({x:cx,y:cy,w:pw});
   }
 
-  // Store level start/end for progress bar
-  levelStartX=80; levelStartY=GROUND_Y-36;
+  // Store level start/end for progress bar (now Y-based for vertical progression)
+  levelStartX=WORLD_W/2; levelStartY=GROUND_Y-36;
 
   // ── STARTING SLAB
-  platforms.push(makePlat(0, GROUND_Y, 500, 'ground', currentZoneId));
+  platforms.push(makePlat(0, GROUND_Y, 480, 'ground', currentZoneId));
 
   // ── PATH PLATFORMS
   path.forEach((p,i)=>{
@@ -370,18 +364,11 @@ function generateLevel(lvl){
     platforms.push(pl);
   });
 
-  // ── GOAL PLATFORM — placed just beyond the last path ledge
+  // ── GOAL PLATFORM — placed at the top center
   const lastP=path[path.length-1];
-  let goalX, goalY;
-  if(preset.weave){
-    goalX = Math.max(40, Math.min(WORLD_W-260, lastP.x+lastP.w/2-100));
-    goalY = Math.min(GOAL_Y, lastP.y-60);
-  } else {
-    goalX = lastP.x+lastP.w+80;
-    goalY = lastP.y - 40;
-    WORLD_W = Math.max(WORLD_W, goalX+280);
-  }
-  levelGoalX=goalX+100; levelGoalY=goalY;
+  const goalX = Math.max(20, Math.min(WORLD_W-220, lastP.x+lastP.w/2-110));
+  const goalY = GOAL_Y + 40;
+  levelGoalX=goalX+110; levelGoalY=goalY;
   platforms.push(makePlat(goalX, goalY, 220, 'goal', currentZoneId));
 
   // ── EXTRA DETAIL LEDGES (optional hop-off platforms, not too close to main path)
