@@ -251,19 +251,19 @@ const MAX_H_GAP = 82;    // max horizontal gap between right edge and left edge 
 //   movingRate   fraction of platforms that become movers
 const PUZZLE_TYPES = [
   { key:'cavern',   name:'🕳️ Cavern Crossing', desc:'Jump the chasms — fall and you restart!',
-    dx:[130,185], dy:[-18,18],   weave:false, pw:[75,115],  steps:[7,10],
+    dx:[145,205], dy:[-22,22],   weave:false, pw:[75,115],  steps:[7,10],
     hazardRate:0.55, enemyRate:0.12, seesawRate:0.05, collapseRate:0.05, movingRate:0.08 },
   { key:'beams',    name:'🪵 Balance Beams',    desc:'Narrow beams — watch your footing!',
-    dx:[55,80],   dy:[-18,4],    weave:false, pw:[32,54],   steps:[9,12],
+    dx:[60,90],   dy:[-20,6],    weave:false, pw:[32,54],   steps:[9,12],
     hazardRate:0.12, enemyRate:0.08, seesawRate:0.55, collapseRate:0.08, movingRate:0.15 },
   { key:'gauntlet', name:'⚔️ Enemy Gauntlet',   desc:'Clear every enemy to reach the exit!',
-    dx:[70,110],  dy:[-14,10],   weave:false, pw:[95,150],  steps:[7,10],
+    dx:[80,125],  dy:[-16,12],   weave:false, pw:[95,150],  steps:[7,10],
     hazardRate:0.10, enemyRate:0.70, seesawRate:0.06, collapseRate:0.04, movingRate:0.05 },
   { key:'climb',    name:'🧗 Sky Climb',         desc:'Scale the shaft — keep going up!',
     dx:[-80,80],  dy:[-55,-26],  weave:true,  pw:[68,110],  steps:[9,13],
     hazardRate:0.16, enemyRate:0.20, seesawRate:0.10, collapseRate:0.15, movingRate:0.10 },
   { key:'switches', name:'🔘 Puzzle Floor',      desc:'Hit all the switches and stay alive!',
-    dx:[65,100],  dy:[-16,6],    weave:false, pw:[85,130],  steps:[7,10],
+    dx:[72,115],  dy:[-16,6],    weave:false, pw:[85,130],  steps:[7,10],
     hazardRate:0.12, enemyRate:0.20, seesawRate:0.18, collapseRate:0.06, movingRate:0.12, switchHeavy:true },
 ];
 const BOSS_TYPE = {
@@ -284,6 +284,30 @@ function generateLevel(lvl){
   keyInv.bronze=0; keyInv.silver=0; keyInv.gold=0;
   switches=[]; dashTrail=[]; screenShake=0; hitFlash=0; combo=0; comboTimer=0;
   lastZoneId=-1;
+
+  // SHOP LEVEL — Level 3 is a safe rest point with shops
+  if(lvl===3){
+    currentZoneId=0;
+    WORLD_W=800; GOAL_Y=GROUND_Y-150;
+    platforms.push(makePlat(0, GROUND_Y, 500, 'ground', 0));
+    platforms.push(makePlat(150, GROUND_Y-120, 160, 'platform', 0));
+    platforms.push(makePlat(400, GROUND_Y-240, 160, 'platform', 0));
+    platforms.push(makePlat(100, GOAL_Y, 220, 'goal', 0));
+    collectibles.push({x:175,y:GROUND_Y-150,w:14,h:14,type:'diamond',collected:false,bob:0});
+    collectibles.push({x:425,y:GROUND_Y-270,w:14,h:14,type:'diamond',collected:false,bob:0});
+    shopTriggers.push({x:170,y:GROUND_Y-170,w:32,h:36,used:false});
+    shopTriggers.push({x:420,y:GROUND_Y-260,w:32,h:36,used:false});
+    shopTriggers.push({x:150,y:GOAL_Y-50,w:32,h:36,used:false});
+    cameraX=0; cameraY=GROUND_Y-H*0.6;
+    PL.x=80; PL.y=GROUND_Y-36; PL.vx=0; PL.vy=0; PL.hp=PL.maxHp;
+    PL.onGround=false; applyWeaponSelection();
+    PL.checkpointX=80; PL.checkpointY=GROUND_Y-36;
+    PL.djAvail=true; PL.dashing=false; PL.dashCooldown=0;
+    PL.seesawPlatIdx=-1; PL.runMom=0;
+    updateProgress();
+    showFact('☕ REST STOP — Restock and prepare!');
+    return;
+  }
 
   // Difficulty multiplier — scales enemy count, HP, gap sizes; caps so it
   // never becomes completely impossible
@@ -963,6 +987,9 @@ function levelComplete(){
   else if(gameLevel===2 && !abilities.wallJump) unlockAbility('wallJump','🧗 Wall Jump!','Slide against a wall, then tap JUMP to launch off it!');
   else if(gameLevel===3 && !abilities.dash) unlockAbility('dash','💨 Dash!','Tap DASH to burst forward at speed — great for gaps!');
   saveHS();
+
+  if(gameLevel===5){ gameWon(); return; }
+
   // Fade to black, swap level, then fade back in
   fadeDir=1; fadeAlpha=0;
   setTimeout(()=>{
@@ -974,6 +1001,64 @@ function levelComplete(){
     showFact('🏆 Floor '+gameLevel+' — '+PUZZLE_TYPES[(gameLevel-1)%PUZZLE_TYPES.length]?.name || '');
     setTimeout(()=>{ if(state==='playing') openShop(); }, 1800);
   }, 1100); // 1100ms ≈ time for fadeAlpha to reach 1 at 0.045/frame × 60fps
+}
+function gameWon(){
+  triggerShake(15);
+  for(let i=0;i<15;i++) fireworks.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-0.5)*8,vy:(Math.random()-0.5)*8-2,life:255,maxLife:255});
+  fireworkTimer=500; SFX.levelUp();
+  fadeDir=1; fadeAlpha=0;
+  setTimeout(()=>{
+    state='won';
+    const overlay=document.createElement('div');
+    overlay.id='winOverlay';
+    overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;pointer-events:all;';
+    overlay.innerHTML=`
+      <div style="text-align:center;color:#FFD700;font-family:Fredoka One,sans-serif;">
+        <div style="font-size:48px;margin-bottom:20px;">🏆 YOU CLIMBED THE BURJ!</div>
+        <div style="font-size:24px;color:#aabcff;margin-bottom:40px;">💎 ${diamonds} Diamonds Collected!</div>
+        <input type="text" id="nameInput" placeholder="Enter your name..." maxlength="20" style="padding:10px;font-size:16px;border-radius:8px;border:2px solid #FFD700;width:90%;max-width:300px;background:#0d1530;color:#FFD700;text-align:center;margin-bottom:20px;">
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+          <button id="submitScore" style="padding:12px 32px;font-size:16px;background:#2e7d32;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold;">Save to Leaderboard</button>
+          <button id="playAgain" style="padding:12px 32px;font-size:16px;background:#1565c0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold;">Play Again</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById('nameInput').focus();
+    document.getElementById('submitScore').onclick=()=>{
+      const name=(document.getElementById('nameInput').value||'Player').substring(0,20);
+      saveScore(name,gameLevel,diamonds);
+      showLeaderboardInOverlay();
+    };
+    document.getElementById('playAgain').onclick=()=>{ overlay.remove(); restartGame(); };
+    document.getElementById('nameInput').onkeypress=(e)=>{ if(e.key==='Enter') document.getElementById('submitScore').click(); };
+  }, 1100);
+}
+function saveScore(name,level,dia){
+  const scores=JSON.parse(localStorage.getItem('burjKhalifahScores')||'[]');
+  scores.push({name,level,diamonds:dia,date:new Date().toLocaleDateString()});
+  scores.sort((a,b)=>b.level!==a.level?b.level-a.level:b.diamonds-a.diamonds);
+  localStorage.setItem('burjKhalifahScores',JSON.stringify(scores.slice(0,100)));
+  updateLeaderboardDisplay();
+}
+function getLeaderboard(){
+  return JSON.parse(localStorage.getItem('burjKhalifahScores')||'[]').slice(0,10);
+}
+function showLeaderboardInOverlay(){
+  const scores=getLeaderboard();
+  const lb=document.getElementById('leaderboardList')||document.createElement('div');
+  if(!lb.id) lb.id='leaderboardList';
+  lb.style.cssText='color:#aabcff;font-size:14px;margin-top:20px;text-align:left;max-height:200px;overflow-y:auto;';
+  lb.innerHTML='<div style="color:#FFD700;font-weight:bold;margin-bottom:10px;">🏅 TOP SCORES</div>';
+  scores.forEach((s,i)=>{ lb.innerHTML+=`<div>${i+1}. <strong style="color:#FFD700">${s.name}</strong> - Level ${s.level} · ${s.diamonds} 💎</div>`; });
+  document.getElementById('winOverlay').appendChild(lb);
+}
+function updateLeaderboardDisplay(){
+  const lb=document.getElementById('titleLeaderboard');
+  if(!lb) return;
+  const scores=getLeaderboard();
+  lb.innerHTML='<div style="color:#FFD700;font-weight:bold;margin-bottom:8px;font-size:14px;">🏅 TOP SCORES</div>';
+  scores.slice(0,5).forEach(s=>{ lb.innerHTML+=`<div style="font-size:11px;color:#aabcff;margin:3px 0;"><strong style="color:#FFD700">${s.name}</strong> Level ${s.level}</div>`; });
 }
 function gameOver(){ state='gameover'; saveHS(); }
 function restartGame(){ gameLevel=1; diamonds=0; abilities.doubleJump=false; abilities.wallJump=false; abilities.dash=false; lastZoneId=-1; fadeAlpha=0; fadeDir=0; generateLevel(1); state='playing'; bgMusic.play(); }
@@ -2233,3 +2318,8 @@ document.getElementById('startBtn').onclick=()=>{
   const soundEl=document.getElementById('soundBtn');
   if(soundEl) soundEl.addEventListener('click',toggleSound);
 })();
+
+// Initialize leaderboard display on page load
+document.addEventListener('DOMContentLoaded', updateLeaderboardDisplay);
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', updateLeaderboardDisplay);
+else updateLeaderboardDisplay();
