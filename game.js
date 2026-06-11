@@ -273,7 +273,7 @@ const BOSS_TYPE = {
 
 function makePlat(x,y,w,type,zid){
   return {x,y,w,h:14,type,floor:0,zone:zid,
-    collapseTimer:0,collapseMax:95,collapsing:false,collapseVY:0,gone:false,
+    collapseTimer:0,collapseMax:180,collapsing:false,collapseVY:0,gone:false,
     tilt:0,tiltV:0,origX:x,origY:y};
 }
 
@@ -427,7 +427,7 @@ function generateLevel(lvl){
   platforms.filter(p=>p.type==='platform'&&p.floor>1).forEach(p=>{
     if(p.w>30&&Math.random()<spRate){
       const sx=p.x+6+Math.random()*Math.max(0,p.w-24);
-      hazards.push({x:sx,y:p.y-8,w:16,h:8,type:'spike'});
+      hazards.push({x:sx,y:p.y-8,w:16,h:8,type:'spike',animTimer:0,extended:true});
     }
   });
 
@@ -809,8 +809,30 @@ function update(){
     }
   }
 
+  // Decay collapse timers for platforms player is not on
+  platforms.forEach(p=>{
+    if(p.type==='collapse'&&!p.collapsing&&!p.gone&&p.collapseTimer>0){
+      p.collapseTimer=Math.max(0,p.collapseTimer-0.5);
+    }
+  });
+
   // ── COLLAPSE
   platforms.forEach(p=>{
+    if(p.type==='collapse'&&p.gone){
+      // Reformation: platform reappears after 180 frames (3 seconds)
+      if(!p.reformTimer) p.reformTimer=0;
+      p.reformTimer++;
+      if(p.reformTimer>=180){
+        p.gone=false;
+        p.collapsing=false;
+        p.collapseTimer=0;
+        p.collapseVY=0;
+        p.y=p.origY;
+        p.x=p.origX;
+        p.reformTimer=0;
+      }
+      return;
+    }
     if(!p.collapsing||p.gone) return;
     p.collapseVY+=0.4; p.y+=p.collapseVY; p.x+=Math.sin(p.collapseVY*5)*1.5;
     if(p.y>cameraY+H+60) p.gone=true;
@@ -837,12 +859,15 @@ function update(){
 
   // ── HAZARDS
   for(const hz of hazards){
-    if(PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:hz.x,y:hz.y,w:hz.w,h:hz.h})){
+    if(PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:hz.x,y:hz.y,w:hz.w,h:hz.h})&&hz.extended){
       PL.hp--; PL.invincible=100; PL.hurtTimer=16; PL.vy=-5;
       triggerShake(5); hitFlash=12; SFX.hit();
       spawnParts(PL.x+PL.w/2,PL.y,'#ff4400',8);
       if(PL.hp<=0){gameOver();return;}
     }
+    // Animate spikes up/down (cycle every 60 frames)
+    hz.animTimer=(hz.animTimer+1)%120;
+    hz.extended=hz.animTimer<60;
   }
 
   // ── ENEMIES
@@ -1519,11 +1544,19 @@ function drawHazards(){
   for(const hz of hazards){
     const ssy=sw(hz.y), ssx=sx(hz.x);
     if(ssy>H||ssy+hz.h<0||ssx>W||ssx+hz.w<0) continue;
-    ctx.fillStyle='#cc2222';
+
+    // Spikes animate up/down
+    const spikeOffset = hz.extended ? 0 : -8;
+    ctx.fillStyle=hz.extended?'#ff2222':'#aa1111';
     const n=Math.floor(hz.w/7);
     for(let i=0;i<n;i++){
       const hx=ssx+i*7;
-      ctx.beginPath(); ctx.moveTo(hx,ssy+hz.h); ctx.lineTo(hx+3.5,ssy); ctx.lineTo(hx+7,ssy+hz.h); ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(hx, ssy+hz.h+spikeOffset);
+      ctx.lineTo(hx+3.5, ssy+spikeOffset);
+      ctx.lineTo(hx+7, ssy+hz.h+spikeOffset);
+      ctx.closePath();
+      ctx.fill();
     }
   }
 }
