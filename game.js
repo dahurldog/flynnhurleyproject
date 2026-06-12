@@ -1497,7 +1497,7 @@ function drawInterior(){
 
       // Volumetric light shaft (cone from ceiling down)
       const shaftG = ctx.createLinearGradient(0, ceilY+24, 0, ceilY+200);
-      shaftG.addColorStop(0, pal.light.replace(')',',0.35)').replace('rgba','rgba').replace(/,[\d.]+\)$/,',0.30)'));
+      shaftG.addColorStop(0, pal.light.replace(/,[\d.]+\)$/,',0.30)'));
       shaftG.addColorStop(0.4, pal.light.replace(/,[\d.]+\)$/,',0.08)'));
       shaftG.addColorStop(1,'rgba(0,0,0,0)');
       ctx.fillStyle = shaftG;
@@ -2274,7 +2274,7 @@ function loop(){
     console.error('Game loop recovered from an error:',error);
     if(state==='playing'){
       respawnPlayer();
-      showFact('⚠️ Game recovered safely. Keep climbing!');
+      if(loopErrorCount===1) showFact('⚠️ Game recovered safely. Keep climbing!');
     }
   }
 }
