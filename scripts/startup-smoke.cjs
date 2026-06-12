@@ -96,8 +96,31 @@ if (getElement('titleScreen').style.display !== 'none') throw new Error('Title s
 if (canvas.style.display !== 'block') throw new Error('Game canvas did not open');
 if (!getElement('progressLabel').textContent.includes('/163')) throw new Error('163-floor game did not initialize');
 
+const originalFillRect = ctx.fillRect;
+let injectedRenderError = true;
+ctx.fillRect = (...args) => {
+  if (injectedRenderError) {
+    injectedRenderError = false;
+    throw new Error('Injected one-frame render failure');
+  }
+  return originalFillRect(...args);
+};
+const recoveryFrame = frames.shift();
+if (recoveryFrame) recoveryFrame();
+ctx.fillRect = originalFillRect;
+const postRecoveryFrame = frames.shift();
+if (postRecoveryFrame) postRecoveryFrame();
+if (vm.runInContext('loopErrorCount', sandbox) !== 1) throw new Error('Game loop watchdog did not record the render failure');
+if (!frames.length) throw new Error('Game loop stopped after a one-frame render failure');
+
 const progression = vm.runInContext(`
   (() => {
+    const earlyHazards = hazards.filter(hazard => hazard.platform.floor <= 15).length;
+    const earlyEnemies = enemies.filter(enemy => {
+      const platform = platforms.find(item => item.x === enemy.platX && item.y === enemy.platY);
+      return platform && platform.floor <= 15;
+    }).length;
+    const earlyMovers = platforms.filter(platform => platform.floor <= 15 && platform.moving).length;
     enemies.forEach(enemy => { enemy.dead = true; });
     mathTriggers.forEach(trigger => { trigger.triggered = true; });
     for (let floor = 1; floor <= TOTAL_FLOORS; floor++) {
@@ -127,6 +150,9 @@ const progression = vm.runInContext(`
 
     return {
       checkpoints,
+      earlyHazards,
+      earlyEnemies,
+      earlyMovers,
       expectedCheckpointY,
       playerY: PL.y,
       playerScreenY: PL.y - cameraY,
@@ -136,6 +162,7 @@ const progression = vm.runInContext(`
 `, sandbox);
 
 if (!progression.checkpoints.includes(10)) throw new Error('Floor 10 checkpoint was not generated');
+if (progression.earlyHazards || progression.earlyEnemies || progression.earlyMovers) throw new Error('Early teaching floors contain blocking hazards');
 if (progression.playerY !== progression.expectedCheckpointY) throw new Error('Player did not respawn after falling below the route');
 if (progression.playerScreenY < -20 || progression.playerScreenY > 600) throw new Error('Respawn left the player off-screen');
 if (progression.highestFloorReached !== 163) throw new Error('Full tower progression did not render');

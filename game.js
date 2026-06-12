@@ -41,6 +41,7 @@ let currentFloor = 0, lastZoneId = -1;
 let screenShake = 0;
 let fadeAlpha = 0, fadeDir = 0; // 0=none, 1=fading to black, -1=fading to clear
 let hitFlash = 0;
+let loopErrorCount = 0;
 let combo = 0, comboTimer = 0, comboMax = 0;
 let dashTrail = [];
 let switches = [];
@@ -353,20 +354,20 @@ function generateLevel(){
         type:'diamond',collected:false,bob:Math.random()*Math.PI*2});
     }
 
-    if(type==='platform'&&floor>8&&floor%13===0&&floor%6!==0){
+    if(type==='platform'&&floor>20&&floor%13===0&&floor%6!==0){
       p.moving=true; p.moveDir=direction; p.movVx=0;
       p.moveSpeed=0.45+Math.min(0.35,floor/500);
       p.moveRange=35+Math.random()*25;
       p.moveOriginX=p.x;
     }
 
-    if(type==='platform'&&floor%11===0){
+    if(type==='platform'&&floor>15&&floor%11===0){
       const offsetX=8+Math.random()*Math.max(0,p.w-32);
       hazards.push({x:p.x+offsetX,y:p.y-8,w:16,h:8,type:'spike',
         animTimer:0,extended:false,hitThisPhase:false,platform:p,offsetX});
     }
 
-    if(floor%6===0){
+    if(floor>15&&floor%6===0){
       const pools=[['grunt'],['grunt','soldier'],['soldier','captain'],['captain','phantom'],['captain','titan','phantom'],['titan','phantom']];
       const pool=pools[zoneId];
       enemies.push(makeEnemy(pool[Math.floor(Math.random()*pool.length)],p.x,p.y,p.w,zoneId,1+Math.floor(floor/45)));
@@ -1080,7 +1081,7 @@ function restartGame(){
   selectedSkin=0; ownedSkins=[0]; selectedWeapon=-1; ownedWeapons=[]; PL.skinIdx=0;
   abilities.doubleJump=false; abilities.wallJump=false; abilities.dash=false;
   PL.maxHp=6; PL.hp=6; lastZoneId=-1; fadeAlpha=0; fadeDir=0;
-  paused=false; mapOpen=false; runStartedAt=Date.now();
+  paused=false; mapOpen=false; loopErrorCount=0; runStartedAt=Date.now();
   generateLevel(); state='playing';
   const playPromise=bgMusic?.play();
   if(playPromise?.catch) playPromise.catch(()=>{});
@@ -2263,7 +2264,20 @@ canvas.addEventListener('click',()=>{ if(state==='gameover') restartGame(); });
 
 // ── MAIN LOOP ─────────────────────────────────────────────────
 let running=false;
-function loop(){ update(); draw(); requestAnimationFrame(loop); }
+function loop(){
+  requestAnimationFrame(loop);
+  try{
+    update();
+    draw();
+  }catch(error){
+    loopErrorCount++;
+    console.error('Game loop recovered from an error:',error);
+    if(state==='playing'){
+      respawnPlayer();
+      showFact('⚠️ Game recovered safely. Keep climbing!');
+    }
+  }
+}
 document.getElementById('startBtn').onclick=()=>{
   document.getElementById('gameCanvas').style.display='block';
   restartGame();
