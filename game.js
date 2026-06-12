@@ -330,7 +330,7 @@ function generateLevel(){
     x=Math.max(24,Math.min(WORLD_W-width-24,nextX));
     const y=GROUND_Y-floor*floorRise;
     let type='platform';
-    if(floor%15===0) type='checkpoint';
+    if(floor%10===0) type='checkpoint';
     else if(floor%23===0) type='collapse';
     else if(floor%17===0) type='seesaw';
 
@@ -597,6 +597,13 @@ function showZone(zone){
 // ── COLLISION ─────────────────────────────────────────────────
 function overlap(a,b){ return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y; }
 
+function respawnPlayer(){
+  PL.x=PL.checkpointX; PL.y=PL.checkpointY; PL.vx=0; PL.vy=0;
+  PL.hp=Math.max(1,PL.hp-1); PL.invincible=80; PL.hurtTimer=16;
+  cameraX=Math.max(0,Math.min(WORLD_W-W,PL.x-W*0.38));
+  cameraY=Math.max(GOAL_Y-H*0.35,Math.min(GROUND_Y-H*0.72,PL.y-H*0.52));
+}
+
 // ── PARTICLES ─────────────────────────────────────────────────
 function spawnParts(wx,wy,color,n,spd=4){
   for(let i=0;i<n;i++){
@@ -783,28 +790,30 @@ function update(){
     setTimeout(()=>{PL.attacking=false;},220);
   }
 
-  // ── CAMERA (follows both X and Y — snaps instantly on big jumps like
-  // respawns/teleports so the player is never left invisible off-screen)
+  // ── CAMERA
+  // Keep vertical progress moving upward. Following a missed jump downward
+  // makes the player and route appear to vanish into an empty shaft.
+  if(PL.y>cameraY+H+100||PL.y>GROUND_Y+200) respawnPlayer();
   const camTX=PL.x-W*0.38, camTY=PL.y-H*0.52;
-  if(Math.abs(camTX-cameraX)>W*0.7 || Math.abs(camTY-cameraY)>H*0.7){
-    cameraX=camTX; cameraY=camTY;
-  } else {
-    cameraX+=(camTX-cameraX)*0.09;
-    cameraY+=(camTY-cameraY)*0.07;
+  if(Math.abs(camTX-cameraX)>W*0.7) cameraX=camTX;
+  else cameraX+=(camTX-cameraX)*0.09;
+  if(camTY<cameraY){
+    if(cameraY-camTY>H*0.7) cameraY=camTY;
+    else cameraY+=(camTY-cameraY)*0.07;
   }
   cameraX=Math.max(0,Math.min(WORLD_W-W,cameraX));
   cameraY=Math.max(GOAL_Y-H*0.35,Math.min(GROUND_Y-H*0.72,cameraY));
   const playerScreenY=PL.y-cameraY;
   const routeVisible=platforms.some(p=>!p.gone&&p.y-cameraY>-100&&p.y-cameraY<H+100&&
     p.x-cameraX<W+80&&p.x+p.w-cameraX>-80);
-  if(!Number.isFinite(cameraX)||!Number.isFinite(cameraY)||playerScreenY<-120||playerScreenY>H+140||!routeVisible){
+  if(!Number.isFinite(cameraX)||!Number.isFinite(cameraY)||playerScreenY<-120){
     cameraX=Math.max(0,Math.min(WORLD_W-W,PL.x-W*0.38));
     cameraY=Math.max(GOAL_Y-H*0.35,Math.min(GROUND_Y-H*0.72,PL.y-H*0.52));
+  } else if(!routeVisible){
+    cameraX=Math.max(0,Math.min(WORLD_W-W,PL.x-W*0.38));
   }
   if(!Number.isFinite(PL.x)||!Number.isFinite(PL.y)||PL.y<GOAL_Y-180){
-    PL.x=PL.checkpointX; PL.y=PL.checkpointY; PL.vx=0; PL.vy=0;
-    cameraX=Math.max(0,Math.min(WORLD_W-W,PL.x-W*0.38));
-    cameraY=Math.max(GOAL_Y-H*0.35,Math.min(GROUND_Y-H*0.72,PL.y-H*0.52));
+    respawnPlayer();
   }
 
   // ── HAZARDS
@@ -946,13 +955,6 @@ function update(){
   for(let i=particles.length-1;i>=0;i--){
     const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.14; p.life--;
     if(p.life<=0) particles.splice(i,1);
-  }
-
-  // Respawn quickly if the player falls below the scrolling camera.
-  if(PL.y>cameraY+H+180||PL.y>GROUND_Y+200){
-    PL.x=PL.checkpointX; PL.y=PL.checkpointY; PL.vx=0; PL.vy=0; PL.hp=Math.max(1,PL.hp-1); PL.invincible=80; PL.hurtTimer=16;
-    cameraX=Math.max(0,Math.min(WORLD_W-W,PL.x-W*0.38));
-    cameraY=Math.max(GOAL_Y-H*0.35,Math.min(GROUND_Y-H*0.72,PL.y-H*0.52));
   }
 
   updateProgress();
@@ -1583,7 +1585,8 @@ function drawPlatforms(){
   const zoneHues=[220,200,195,210,180,160];
   for(const p of platforms){
     if(p.gone) continue;
-    const ssy=sw(p.y), ssx=sx(p.x);
+    const ssy=sw(p.y);
+    let ssx=sx(p.x);
     if(ssy>H+24||ssy+p.h+PLAT_DEPTH<-4||ssx>W+10||ssx+p.w<-10) continue;
 
     if(p.type==='ground'){
