@@ -140,4 +140,51 @@ if (progression.playerY !== progression.expectedCheckpointY) throw new Error('Pl
 if (progression.playerScreenY < -20 || progression.playerScreenY > 600) throw new Error('Respawn left the player off-screen');
 if (progression.highestFloorReached !== 163) throw new Error('Full tower progression did not render');
 
-console.log('Startup smoke test passed: Start opens, all 163 floors render, and falls respawn on-screen.');
+const spikeTest = vm.runInContext(`
+  (() => {
+    const spike = hazards[0];
+    if (!spike) throw new Error('No spike hazard was generated');
+    const platform = spike.platform;
+    const fullHp = PL.maxHp;
+
+    state = 'playing';
+    PL.hp = fullHp;
+    PL.invincible = 0;
+    PL.x = spike.x;
+    PL.y = spike.y;
+    PL.vx = 0;
+    PL.vy = -4;
+    PL.onGround = false;
+    spike.animTimer = 0;
+    spike.extended = false;
+    spike.hitThisPhase = false;
+    update();
+    const jumpThroughHp = PL.hp;
+
+    PL.hp = fullHp;
+    PL.invincible = 0;
+    PL.x = spike.x;
+    PL.y = platform.y - PL.h;
+    PL.vx = 0;
+    PL.vy = 0;
+    PL.onGround = true;
+    spike.animTimer = 0;
+    spike.extended = false;
+    spike.hitThisPhase = false;
+    cameraX = Math.max(0, Math.min(WORLD_W - W, PL.x - W * 0.38));
+    cameraY = Math.max(GOAL_Y - H * 0.35, Math.min(GROUND_Y - H * 0.72, PL.y - H * 0.52));
+
+    for (let frame = 0; frame < SPIKE_PHASE_FRAMES - 1; frame++) update();
+    const safePhase = { hp: PL.hp, extended: spike.extended, timer: spike.animTimer };
+    update();
+    const raisedPhase = { hp: PL.hp, extended: spike.extended, timer: spike.animTimer };
+
+    return { fullHp, jumpThroughHp, safePhase, raisedPhase };
+  })()
+`, sandbox);
+
+if (spikeTest.jumpThroughHp !== spikeTest.fullHp) throw new Error('Retracted spike damaged player jumping through it');
+if (spikeTest.safePhase.hp !== spikeTest.fullHp || spikeTest.safePhase.extended) throw new Error('Spike was dangerous before two safe seconds elapsed');
+if (!spikeTest.raisedPhase.extended || spikeTest.raisedPhase.hp !== spikeTest.fullHp - 1) throw new Error('Spike did not become dangerous after two seconds');
+
+console.log('Regression test passed: all 163 floors render, falls respawn, and spikes use a safe/down then dangerous/up cycle.');

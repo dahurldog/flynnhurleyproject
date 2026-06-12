@@ -11,6 +11,7 @@ const TOTAL_FLOORS = 163;
 const FLOOR_POINTS = 10;
 const QUESTION_POINTS = 100;
 const ENEMY_POINTS = 25;
+const SPIKE_PHASE_FRAMES = 120; // About two seconds at 60fps.
 
 let   WORLD_W  = 1920;    // each level/floor sizes its own arena to fit its puzzle
 const GROUND_Y = 1380;
@@ -362,7 +363,7 @@ function generateLevel(){
     if(type==='platform'&&floor%11===0){
       const offsetX=8+Math.random()*Math.max(0,p.w-32);
       hazards.push({x:p.x+offsetX,y:p.y-8,w:16,h:8,type:'spike',
-        animTimer:0,extended:false,platform:p,offsetX});
+        animTimer:0,extended:false,hitThisPhase:false,platform:p,offsetX});
     }
 
     if(floor%6===0){
@@ -826,27 +827,23 @@ function update(){
       Math.abs(PL.y+PL.h-hz.platform.y)<4&&
       PL.x+PL.w>hz.platform.x&&PL.x<hz.platform.x+hz.platform.w;
 
-    // Spikes pop out when player stands on platform, retract otherwise
+    // Standing on a spike platform starts a repeating two-second safe phase,
+    // then a two-second raised phase. Leaving always resets it to safe/down.
     if(playerOnPlatform){
-      hz.extended=true;
-      hz.animTimer++;
-      // Hurt player if they're touching the extended spike
-      if(hz.animTimer>15 && PL.invincible<=0 && overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:hz.x,y:hz.y,w:hz.w,h:hz.h})){
+      hz.animTimer=(hz.animTimer+1)%(SPIKE_PHASE_FRAMES*2);
+      hz.extended=hz.animTimer>=SPIKE_PHASE_FRAMES;
+      if(!hz.extended) hz.hitThisPhase=false;
+      if(hz.extended&&!hz.hitThisPhase&&PL.invincible<=0&&overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:hz.x,y:hz.y,w:hz.w,h:hz.h})){
         PL.hp--; PL.invincible=100; PL.hurtTimer=16; PL.vy=-5;
+        hz.hitThisPhase=true;
         triggerShake(5); hitFlash=12; SFX.hit();
         spawnParts(PL.x+PL.w/2,PL.y,'#ff4400',8);
         if(PL.hp<=0){gameOver();return;}
       }
     } else {
       hz.extended=false;
-      hz.animTimer=Math.max(0,hz.animTimer-2);
-      // Also hurt if player jumps through spike (even when retracted)
-      if(PL.invincible<=0 && overlap({x:PL.x,y:PL.y,w:PL.w,h:PL.h},{x:hz.x,y:hz.y,w:hz.w,h:hz.h})){
-        PL.hp--; PL.invincible=100; PL.hurtTimer=16; PL.vy=-5;
-        triggerShake(5); hitFlash=12; SFX.hit();
-        spawnParts(PL.x+PL.w/2,PL.y,'#ff4400',8);
-        if(PL.hp<=0){gameOver();return;}
-      }
+      hz.animTimer=0;
+      hz.hitThisPhase=false;
     }
   }
 
@@ -1564,7 +1561,7 @@ function drawHazards(){
     if(ssy>H||ssy+hz.h<0||ssx>W||ssx+hz.w<0) continue;
 
     // Spikes visible whether retracted or extended
-    const spikeOffset = hz.extended ? 0 : -8;
+    const spikeOffset = hz.extended ? 0 : 8;
     ctx.fillStyle=hz.extended?'#ff3333':'#666666';  // Dark grey when retracted (visible in platform), bright red when extended
     const n=Math.floor(hz.w/7);
     for(let i=0;i<n;i++){
