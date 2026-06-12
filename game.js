@@ -12,6 +12,8 @@ const FLOOR_POINTS = 10;
 const QUESTION_POINTS = 100;
 const ENEMY_POINTS = 25;
 const SPIKE_PHASE_FRAMES = 120; // About two seconds at 60fps.
+const FALL_SCORE_PENALTY = 50;
+const FALL_HEALTH_PENALTY = 0.5;
 
 let   WORLD_W  = 1920;    // each level/floor sizes its own arena to fit its puzzle
 const GROUND_Y = 1380;
@@ -53,28 +55,35 @@ function _ac(){ if(!_audioCtx) _audioCtx=new(window.AudioContext||window.webkitA
 function tone(freq,type,dur,vol=0.22,freqEnd=null){
   if(!soundEnabled) return;
   try{
-    const ac=_ac(),o=ac.createOscillator(),g=ac.createGain();
-    o.connect(g); g.connect(ac.destination); o.type=type;
-    o.frequency.setValueAtTime(freq,ac.currentTime);
-    if(freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd,ac.currentTime+dur);
-    g.gain.setValueAtTime(vol,ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+dur);
-    o.start(ac.currentTime); o.stop(ac.currentTime+dur);
+    const ac=_ac(),now=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();
+    const filter=ac.createBiquadFilter?ac.createBiquadFilter():null;
+    if(filter){
+      o.connect(filter); filter.connect(g); filter.type='lowpass';
+      filter.frequency.setValueAtTime(Math.max(900,freq*3),now);
+    }else o.connect(g);
+    g.connect(ac.destination); o.type=type;
+    o.frequency.setValueAtTime(freq,now);
+    if(freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd,now+dur);
+    g.gain.setValueAtTime(0.001,now);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.001,vol),now+Math.min(0.025,dur*0.25));
+    g.gain.exponentialRampToValueAtTime(0.001,now+dur);
+    o.start(now); o.stop(now+dur+0.02);
   }catch(e){}
 }
 const SFX={
-  jump:      ()=>tone(300,'square',0.11,0.14,440),
-  djump:     ()=>tone(480,'square',0.14,0.12,660),
-  walljump:  ()=>tone(260,'square',0.11,0.12,400),
-  land:      ()=>tone(100,'square',0.07,0.18,70),
-  dash:      ()=>tone(220,'sawtooth',0.08,0.11,380),
-  hit:       ()=>tone(110,'sawtooth',0.22,0.32,75),
+  jump:      ()=>tone(300,'triangle',0.13,0.10,430),
+  djump:     ()=>tone(460,'sine',0.16,0.10,680),
+  walljump:  ()=>tone(250,'triangle',0.13,0.09,390),
+  land:      ()=>tone(105,'sine',0.09,0.07,75),
+  fall:      ()=>tone(260,'sine',0.32,0.12,95),
+  dash:      ()=>tone(210,'triangle',0.11,0.09,360),
+  hit:       ()=>tone(125,'triangle',0.20,0.18,78),
   diamond:   ()=>tone(900,'sine',0.13,0.07,1150),
   food:      ()=>tone(440,'sine',0.11,0.09,560),
-  kill:      ()=>{ tone(250,'sawtooth',0.09,0.28,175); setTimeout(()=>tone(160,'sawtooth',0.11,0.22,95),85); },
+  kill:      ()=>{ tone(250,'triangle',0.10,0.16,175); setTimeout(()=>tone(165,'sine',0.13,0.12,100),85); },
   checkpoint:()=>{ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,'sine',0.14,0.11),i*80)); },
   correct:   ()=>{ [523,659,784].forEach((f,i)=>setTimeout(()=>tone(f,'sine',0.12,0.11),i*100)); },
-  wrong:     ()=>tone(155,'sawtooth',0.28,0.35,90),
+  wrong:     ()=>tone(155,'triangle',0.28,0.18,90),
   levelUp:   ()=>{ [262,330,392,523,659].forEach((f,i)=>setTimeout(()=>tone(f,'sine',0.18,0.16),i*100)); },
   unlock:    ()=>{ [392,523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,'triangle',0.2,0.15),i*90)); },
 };
@@ -599,11 +608,18 @@ function showZone(zone){
 // ── COLLISION ─────────────────────────────────────────────────
 function overlap(a,b){ return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y; }
 
-function respawnPlayer(){
+function respawnPlayer(applyFallPenalty=false){
   PL.x=PL.checkpointX; PL.y=PL.checkpointY; PL.vx=0; PL.vy=0;
-  PL.hp=Math.max(1,PL.hp-1); PL.invincible=80; PL.hurtTimer=16;
+  if(applyFallPenalty){
+    score=Math.max(0,score-FALL_SCORE_PENALTY);
+    PL.hp=Math.max(0,PL.hp-FALL_HEALTH_PENALTY);
+    showFact('↘️ Fall penalty: -'+FALL_SCORE_PENALTY+' points · -½ heart');
+    SFX.fall();
+  }
+  PL.invincible=80; PL.hurtTimer=16;
   cameraX=Math.max(0,Math.min(WORLD_W-W,PL.x-W*0.38));
   cameraY=Math.max(GOAL_Y-H*0.35,Math.min(GROUND_Y-H*0.72,PL.y-H*0.52));
+  if(PL.hp<=0) gameOver();
 }
 
 // ── PARTICLES ─────────────────────────────────────────────────
@@ -714,10 +730,18 @@ function update(){
   });
 
   // ── SEESAW
+  const previousSeesawPlatIdx=PL.seesawPlatIdx;
   PL.seesawPlatIdx=-1;
   platforms.forEach((p,pi)=>{
     if(p.type!=='seesaw'||p.gone) return;
-    p.tiltV+=(0-p.tilt)*0.08-p.tiltV*0.25; p.tilt+=p.tiltV;
+    let targetTilt=0;
+    if(pi===previousSeesawPlatIdx){
+      const balance=(PL.x+PL.w/2-(p.x+p.w/2))/(p.w/2);
+      targetTilt=Math.max(-0.20,Math.min(0.20,balance*0.18));
+    }
+    p.tiltV+=(targetTilt-p.tilt)*0.035;
+    p.tiltV*=0.78;
+    p.tilt=Math.max(-0.22,Math.min(0.22,p.tilt+p.tiltV));
   });
 
   // ── PLATFORM COLLISION
@@ -727,14 +751,15 @@ function update(){
     if(PL.x+PL.w<=p.x||PL.x>=p.x+p.w) continue;
     let surfY=p.y;
     if(p.type==='seesaw'){ const dx=PL.x+PL.w/2-(p.x+p.w/2); surfY=p.y+Math.sin(p.tilt)*dx; }
-    if(PL.vy>=0&&PL.y+PL.h>=surfY&&PL.y+PL.h<=surfY+p.h+Math.abs(PL.vy)+2){
+    const seesawGrace=p.type==='seesaw'&&pi===previousSeesawPlatIdx?7:0;
+    if(PL.vy>=0&&PL.y+PL.h>=surfY-seesawGrace&&PL.y+PL.h<=surfY+p.h+Math.abs(PL.vy)+4+seesawGrace){
       PL.y=surfY-PL.h; PL.vy=0; PL.onGround=true;
       if(p.moving) PL.x=Math.max(0,Math.min(WORLD_W-PL.w,PL.x+(p.movVx||0)));
-      if(!wasOnGround){ PL.landTick=8; SFX.land(); }
+      if(!wasOnGround&&pi!==previousSeesawPlatIdx){ PL.landTick=8; SFX.land(); }
       if(p.type==='seesaw'){
         PL.seesawPlatIdx=pi;
-        p.tiltV+=(PL.x+PL.w/2-(p.x+p.w/2))/(p.w/2)*0.018;
-        PL.vx+=Math.sin(p.tilt)*0.6;
+        const slopePush=Math.abs(p.tilt)>0.04?Math.sin(p.tilt)*0.055:0;
+        PL.vx=Math.max(-2.5,Math.min(2.5,PL.vx+slopePush));
       } else if(p.type==='collapse'){
         p.collapseTimer++;
         if(p.collapseTimer>=p.collapseMax&&!p.collapsing){
@@ -795,7 +820,12 @@ function update(){
   // ── CAMERA
   // Keep vertical progress moving upward. Following a missed jump downward
   // makes the player and route appear to vanish into an empty shaft.
-  if(PL.y>cameraY+H+100||PL.y>GROUND_Y+200) respawnPlayer();
+  if(PL.y>cameraY+H+100||PL.y>GROUND_Y+200){
+    respawnPlayer(true);
+    updateProgress();
+    for(const k in justPressed) delete justPressed[k];
+    return;
+  }
   const camTX=PL.x-W*0.38, camTY=PL.y-H*0.52;
   if(Math.abs(camTX-cameraX)>W*0.7) cameraX=camTX;
   else cameraX+=(camTX-cameraX)*0.09;

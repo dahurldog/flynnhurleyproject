@@ -141,6 +141,9 @@ const progression = vm.runInContext(`
     PL.checkpointX = floorTen.x + floorTen.w / 2 - PL.w / 2;
     PL.checkpointY = floorTen.y - PL.h;
     const expectedCheckpointY = PL.checkpointY;
+    PL.hp = PL.maxHp;
+    const beforeFallHp = PL.hp;
+    const beforeFallScore = score;
     cameraY = platforms.find(platform => platform.floor === 12).y - H * 0.52;
     PL.y = cameraY + H + 105;
     PL.vy = 8;
@@ -156,6 +159,8 @@ const progression = vm.runInContext(`
       expectedCheckpointY,
       playerY: PL.y,
       playerScreenY: PL.y - cameraY,
+      fallHealthLost: beforeFallHp - PL.hp,
+      fallScoreLost: beforeFallScore - score,
       highestFloorReached,
     };
   })()
@@ -165,7 +170,46 @@ if (!progression.checkpoints.includes(10)) throw new Error('Floor 10 checkpoint 
 if (progression.earlyHazards || progression.earlyEnemies || progression.earlyMovers) throw new Error('Early teaching floors contain blocking hazards');
 if (progression.playerY !== progression.expectedCheckpointY) throw new Error('Player did not respawn after falling below the route');
 if (progression.playerScreenY < -20 || progression.playerScreenY > 600) throw new Error('Respawn left the player off-screen');
+if (progression.fallHealthLost !== 0.5 || progression.fallScoreLost !== 50) throw new Error('Fall penalty was not half a heart and 50 points');
 if (progression.highestFloorReached !== 163) throw new Error('Full tower progression did not render');
+
+const seesawTest = vm.runInContext(`
+  (() => {
+    const platformIndex = platforms.findIndex(platform => platform.type === 'seesaw');
+    const platform = platforms[platformIndex];
+    if (!platform) throw new Error('No seesaw platform was generated');
+    state = 'playing';
+    PL.x = platform.x + platform.w * 0.22;
+    PL.y = platform.y - PL.h;
+    PL.vx = 0;
+    PL.vy = 0;
+    PL.onGround = true;
+    PL.seesawPlatIdx = platformIndex;
+    platform.tilt = -0.18;
+    platform.tiltV = 0;
+    cameraX = Math.max(0, Math.min(WORLD_W - W, PL.x - W * 0.38));
+    cameraY = Math.max(GOAL_Y - H * 0.35, Math.min(GROUND_Y - H * 0.72, PL.y - H * 0.52));
+    let contactLosses = 0;
+    let maxTilt = 0;
+    let maxSpeed = 0;
+    let landSounds = 0;
+    const originalLand = SFX.land;
+    SFX.land = () => { landSounds++; };
+    for (let frame = 0; frame < 180; frame++) {
+      update();
+      draw();
+      if (!PL.onGround) contactLosses++;
+      maxTilt = Math.max(maxTilt, Math.abs(platform.tilt));
+      maxSpeed = Math.max(maxSpeed, Math.abs(PL.vx));
+    }
+    SFX.land = originalLand;
+    return { contactLosses, maxTilt, maxSpeed, landSounds };
+  })()
+`, sandbox);
+
+if (seesawTest.contactLosses > 1) throw new Error('Seesaw repeatedly lost player contact');
+if (seesawTest.maxTilt > 0.221 || seesawTest.maxSpeed > 2.51) throw new Error('Seesaw movement exceeded safe limits');
+if (seesawTest.landSounds > 1) throw new Error('Seesaw repeatedly triggered landing sounds');
 
 const spikeTest = vm.runInContext(`
   (() => {
@@ -214,4 +258,4 @@ if (spikeTest.jumpThroughHp !== spikeTest.fullHp) throw new Error('Retracted spi
 if (spikeTest.safePhase.hp !== spikeTest.fullHp || spikeTest.safePhase.extended) throw new Error('Spike was dangerous before two safe seconds elapsed');
 if (!spikeTest.raisedPhase.extended || spikeTest.raisedPhase.hp !== spikeTest.fullHp - 1) throw new Error('Spike did not become dangerous after two seconds');
 
-console.log('Regression test passed: all 163 floors render, falls respawn, and spikes use a safe/down then dangerous/up cycle.');
+console.log('Regression test passed: all floors render, falls are penalized, seesaws stay smooth, and spikes cycle safely.');
