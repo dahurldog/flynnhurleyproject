@@ -22,12 +22,12 @@ body{background:#030810;display:flex;flex-direction:column;align-items:center;
 .banner-left .subtitle{color:#8899dd;font-size:11px;font-weight:600;}
 .badge{background:#FFD700;color:#000;font-size:11px;font-weight:800;
        border-radius:20px;padding:3px 11px;white-space:nowrap;}
-#progressWrap{width:480px;position:relative;}
+#progressWrap{width:min(100%,480px);position:relative;}
 #progressBar{width:100%;height:8px;background:#111;border:1px solid #FFD70055;border-top:none;overflow:hidden;}
 #progressFill{height:100%;background:linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c);width:0%;transition:width .5s;}
 #progressLabel{position:absolute;top:-1px;right:5px;color:#FFD70088;font-size:9px;pointer-events:none;}
-#gameContainer{position:relative;}
-canvas{display:block;border:2px solid #FFD70066;border-top:none;}
+#gameContainer{position:relative;width:min(100vw,480px);}
+canvas{display:block;width:100%;height:auto;border:2px solid #FFD70066;border-top:none;}
 #zoneBanner{
   position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
   text-align:center;pointer-events:none;z-index:8;opacity:0;
@@ -237,7 +237,7 @@ canvas{touch-action:none;}
   </div>
   <div id="titleScreen">
     <div class="title-logo">🏙️ Burj Khalifa<br>Climber!</div>
-    <div class="title-sub">Dubai Maths Adventure</div>
+    <div class="title-sub">Race up all 163 floors · Score points · Build answer streaks</div>
     <div class="school-tag">📚 Year 4 &amp; 5 School Project</div>
     <div class="metroid-tag">🗺️ Metroidvania · Explore &amp; Unlock</div>
     <button id="startBtn">▶ START CLIMBING!</button>
@@ -268,6 +268,6 @@ canvas{touch-action:none;}
     <button class="tc-btn" id="tcPause" aria-label="Pause">⏸</button>
   </div>
 </div>
-<script src="game.js?v=20260608"></script>
+<script src="game.js?v=20260612-3"></script>
 </body>
 </html>
