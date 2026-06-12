@@ -211,6 +211,40 @@ if (seesawTest.contactLosses > 1) throw new Error('Seesaw repeatedly lost player
 if (seesawTest.maxTilt > 0.221 || seesawTest.maxSpeed > 2.51) throw new Error('Seesaw movement exceeded safe limits');
 if (seesawTest.landSounds > 1) throw new Error('Seesaw repeatedly triggered landing sounds');
 
+const crumbleTest = vm.runInContext(`
+  (() => {
+    const platform = platforms.find(item => item.type === 'collapse');
+    if (!platform) throw new Error('No collapse platform was generated');
+    const originalX = platform.x;
+    const originalY = platform.y;
+    state = 'playing';
+    PL.x = 80;
+    PL.y = GROUND_Y - PL.h;
+    PL.vx = 0;
+    PL.vy = 0;
+    PL.onGround = true;
+    beginPlatformCrumble(platform);
+    const startPieceY = platform.crumblePieces[0].y;
+    for (let frame = 0; frame < 35; frame++) {
+      update();
+      draw();
+    }
+    const midState = {
+      platformX: platform.x,
+      platformY: platform.y,
+      pieceY: platform.crumblePieces[0].y,
+      pieceCount: platform.crumblePieces.length,
+      gone: platform.gone,
+    };
+    for (let frame = 35; frame < 95; frame++) update();
+    return { originalX, originalY, startPieceY, midState, goneAfterAnimation: platform.gone };
+  })()
+`, sandbox);
+
+if (crumbleTest.midState.platformX !== crumbleTest.originalX || crumbleTest.midState.platformY !== crumbleTest.originalY) throw new Error('Collapse platform still jitters or falls as one slab');
+if (crumbleTest.midState.pieceCount < 5 || crumbleTest.midState.pieceY <= crumbleTest.startPieceY) throw new Error('Collapse platform did not break into falling pieces');
+if (crumbleTest.midState.gone || !crumbleTest.goneAfterAnimation) throw new Error('Crumble animation lifecycle is incorrect');
+
 const spikeTest = vm.runInContext(`
   (() => {
     const spike = hazards[0];
@@ -258,4 +292,4 @@ if (spikeTest.jumpThroughHp !== spikeTest.fullHp) throw new Error('Retracted spi
 if (spikeTest.safePhase.hp !== spikeTest.fullHp || spikeTest.safePhase.extended) throw new Error('Spike was dangerous before two safe seconds elapsed');
 if (!spikeTest.raisedPhase.extended || spikeTest.raisedPhase.hp !== spikeTest.fullHp - 1) throw new Error('Spike did not become dangerous after two seconds');
 
-console.log('Regression test passed: all floors render, falls are penalized, seesaws stay smooth, and spikes cycle safely.');
+console.log('Regression test passed: all floors render, falls are penalized, platforms crumble smoothly, and spikes cycle safely.');

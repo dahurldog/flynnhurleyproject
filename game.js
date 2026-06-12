@@ -296,7 +296,21 @@ const BOSS_TYPE = {
 function makePlat(x,y,w,type,zid){
   return {x,y,w,h:14,type,floor:0,zone:zid,
     collapseTimer:0,collapseMax:180,collapsing:false,collapseVY:0,gone:false,
-    tilt:0,tiltV:0,origX:x,origY:y};
+    crumbleAge:0,crumblePieces:null,tilt:0,tiltV:0,origX:x,origY:y};
+}
+
+function beginPlatformCrumble(p){
+  p.collapsing=true;
+  p.crumbleAge=0;
+  const pieceCount=Math.max(5,Math.round(p.w/24));
+  const pieceW=p.w/pieceCount;
+  p.crumblePieces=Array.from({length:pieceCount},(_,i)=>({
+    x:i*pieceW,y:0,w:pieceW+0.5,
+    vx:(i-(pieceCount-1)/2)*0.018+(Math.random()-0.5)*0.12,
+    vy:0.08+Math.random()*0.18,
+    rot:0,vr:(Math.random()-0.5)*0.025,
+  }));
+  spawnParts(p.x+p.w/2,p.y+4,'#8890a688',8,1.2);
 }
 
 function floorZoneId(floor){
@@ -747,7 +761,7 @@ function update(){
   // ── PLATFORM COLLISION
   const wasOnGround=PL.onGround; PL.onGround=false;
   for(let pi=0;pi<platforms.length;pi++){
-    const p=platforms[pi]; if(p.gone) continue;
+    const p=platforms[pi]; if(p.gone||(p.type==='collapse'&&p.collapsing)) continue;
     if(PL.x+PL.w<=p.x||PL.x>=p.x+p.w) continue;
     let surfY=p.y;
     if(p.type==='seesaw'){ const dx=PL.x+PL.w/2-(p.x+p.w/2); surfY=p.y+Math.sin(p.tilt)*dx; }
@@ -763,7 +777,7 @@ function update(){
       } else if(p.type==='collapse'){
         p.collapseTimer++;
         if(p.collapseTimer>=p.collapseMax&&!p.collapsing){
-          p.collapsing=true; spawnParts(p.x+p.w/2,p.y,'#8B4513aa',8,2);
+          beginPlatformCrumble(p);
         }
       }
       if(p.floor) reachFloor(p.floor);
@@ -798,6 +812,8 @@ function update(){
         p.collapsing=false;
         p.collapseTimer=0;
         p.collapseVY=0;
+        p.crumbleAge=0;
+        p.crumblePieces=null;
         p.y=p.origY;
         p.x=p.origX;
         p.reformTimer=0;
@@ -805,8 +821,15 @@ function update(){
       return;
     }
     if(!p.collapsing||p.gone) return;
-    p.collapseVY+=0.4; p.y+=p.collapseVY; p.x+=Math.sin(p.collapseVY*5)*1.5;
-    if(p.y>cameraY+H+60) p.gone=true;
+    p.crumbleAge++;
+    for(const piece of p.crumblePieces||[]){
+      piece.x+=piece.vx; piece.y+=piece.vy; piece.vy+=0.085;
+      piece.rot+=piece.vr;
+    }
+    if(p.crumbleAge%12===0){
+      spawnParts(p.x+Math.random()*p.w,p.y+8,'#7f879777',2,0.8);
+    }
+    if(p.crumbleAge>=90) p.gone=true;
   });
 
 
@@ -1655,6 +1678,22 @@ function drawPlatforms(){
       continue;
     }
 
+    if(p.type==='collapse'&&p.collapsing){
+      for(const piece of p.crumblePieces||[]){
+        ctx.save();
+        ctx.translate(ssx+piece.x+piece.w/2,ssy+piece.y+p.h/2);
+        ctx.rotate(piece.rot);
+        ctx.fillStyle='#252b3a';
+        ctx.fillRect(-piece.w/2,-p.h/2,piece.w-0.8,p.h);
+        ctx.fillStyle='#151925';
+        ctx.fillRect(-piece.w/2,p.h/2,piece.w-0.8,PLAT_DEPTH);
+        ctx.fillStyle='rgba(135,150,180,0.24)';
+        ctx.fillRect(-piece.w/2,-p.h/2,piece.w-0.8,1.5);
+        ctx.restore();
+      }
+      continue;
+    }
+
     // ── Determine top/front/edge colours by type
     let topCol, frontCol, edgeHigh, glowCol=null;
 
@@ -1666,15 +1705,10 @@ function drawPlatforms(){
       topCol='#3a0a0a'; frontCol='#260606'; edgeHigh='rgba(255,60,40,0.65)';
       ctx.shadowColor='#ff2200'; ctx.shadowBlur=8;
     } else if(p.type==='collapse'){
-      const shakeX=p.collapsing?Math.sin(Date.now()/40)*3:0;
       const frac=Math.min(1,p.collapseTimer/p.collapseMax);
-      const r=Math.round(lerp(55,175,frac)),g2=Math.round(lerp(60,15,frac)),b=Math.round(lerp(120,15,frac));
-      topCol=`rgb(${r},${g2},${b})`; frontCol=`rgb(${Math.round(r*0.45)},${Math.round(g2*0.4)},${Math.round(b*0.4)})`;
-      edgeHigh=`rgba(255,80,20,${frac*0.85})`;
-      ssx+= shakeX; // apply shake to all subsequent draws for this platform
-      // Always-visible warning so players learn to spot unstable ground before stepping on it
-      ctx.fillStyle='rgba(255,205,40,0.9)'; ctx.font='10px Arial'; ctx.textAlign='center';
-      ctx.fillText('⚠️ shaky',ssx+p.w/2,ssy-4);
+      topCol=`hsl(${215-Math.round(frac*8)},25%,${16+Math.round(frac*2)}%)`;
+      frontCol=`hsl(${215-Math.round(frac*8)},24%,9%)`;
+      edgeHigh=`rgba(120,145,185,${0.24+frac*0.10})`;
     } else {
       // Normal platform — zone-themed aluminium/concrete ledge
       const zh=zoneHues[Math.min(p.zone||0,5)];
@@ -1687,6 +1721,24 @@ function drawPlatforms(){
     // ── TOP SURFACE
     ctx.fillStyle = topCol;
     ctx.fillRect(ssx, ssy, p.w, p.h);
+
+    if(p.type==='collapse'){
+      const frac=Math.min(1,p.collapseTimer/p.collapseMax);
+      const crackCount=2+Math.floor(frac*3);
+      ctx.strokeStyle=`rgba(4,7,14,${0.16+frac*0.34})`;
+      ctx.lineWidth=0.8+frac*0.35;
+      for(let crack=0;crack<crackCount;crack++){
+        const seed=(p.floor*17+crack*29)%97;
+        const startX=ssx+8+(seed/97)*Math.max(8,p.w-16);
+        const direction=seed%2===0?1:-1;
+        ctx.beginPath();
+        ctx.moveTo(startX,ssy+1);
+        ctx.lineTo(startX+direction*(2+frac*5),ssy+4);
+        ctx.lineTo(startX-direction*(1+frac*3),ssy+8);
+        ctx.lineTo(startX+direction*(3+frac*6),ssy+12);
+        ctx.stroke();
+      }
+    }
 
     // Top edge highlight
     ctx.fillStyle = edgeHigh;

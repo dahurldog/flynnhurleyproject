@@ -92,6 +92,22 @@ async function connect() {
           }
         }
       }
+      const crumblePlatform = platforms.find(platform => platform.type === 'collapse');
+      state = 'playing';
+      PL.x = 80;
+      PL.y = GROUND_Y - PL.h;
+      PL.vx = 0;
+      PL.vy = 0;
+      PL.onGround = true;
+      beginPlatformCrumble(crumblePlatform);
+      for (let frame = 0; frame < 100; frame++) {
+        try {
+          update();
+          draw();
+        } catch (error) {
+          window.__debugFailures.push({ run: 'crumble', floor: crumblePlatform.floor, message: error.stack || error.message });
+        }
+      }
       window.__debugFailures;
     `,
     awaitPromise: true,
